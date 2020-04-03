@@ -1,20 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parser where
+module Parser
+  ( parse
+  )
+where
 
+import           Control.Monad                  ( void )
 import           Data.Char
 import           Data.Either
-import           Data.Text                      ( Text )
 import           Data.Void
-import           Control.Monad                  ( void )
 import           Text.Megaparsec         hiding ( parse )
-
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as L
 
 import           Ast
 
-type Parser = Parsec Void Text
+type Parser = Parsec Void String
+
+parse :: FilePath -> String -> Decls
+parse f s = case runParser (decls <* eof) f s of
+  Left  pErrs -> Decls []
+  Right e     -> e
+
 
 lineComment :: Parser ()
 lineComment = L.skipLineComment "--"
@@ -26,7 +33,7 @@ sc :: Parser ()
 sc = L.space (void $ some (char ' ' <|> char '\t')) lineComment empty
 
 -- TODO: We should exclude other reserved words here as well
-reserved :: Parser Text
+reserved :: Parser String
 reserved = L.symbol sc "assert"
 
 largeid :: Parser String
@@ -46,7 +53,7 @@ var sc = L.lexeme sc smallid <?> "variable"
 policyVar :: Parser () -> Parser String
 policyVar sc = L.lexeme sc largeid <?> "policy name"
 
-arrow :: Parser () -> Parser Text
+arrow :: Parser () -> Parser String
 arrow sc = L.symbol sc "->"
 
 decls :: Parser Decls

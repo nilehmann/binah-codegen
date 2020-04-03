@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f35c2c37e81fc454289386c93bcb4a0aaa33ba1e692a79f274fc2fd861474088
+-- hash: 628d08da5e5c4c381ed8c6f1cffbefa0177a1fc6aaaa21d6e1297fc837b3fc25
 
 name:           generator
 version:        0.1.0.0
@@ -28,7 +28,6 @@ source-repository head
 library
   exposed-modules:
       Ast
-      Lib
       Parser
       Render
   other-modules:

@@ -1,7 +1,10 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Render where
+module Render
+  ( render
+  )
+where
 
 import           Data.Char
 import           Data.Text                      ( Text )
@@ -167,4 +170,4 @@ instance ToText Text where
   toText t = t
 
 instance ToText [Char] where
-  toText s = T.pack s
+  toText = T.pack
