@@ -1,4 +1,4 @@
-module Ast where
+module Binah.CodeGen.Ast where
 
 import           Data.Typeable
 import           Data.Data

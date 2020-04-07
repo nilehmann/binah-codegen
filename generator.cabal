@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 628d08da5e5c4c381ed8c6f1cffbefa0177a1fc6aaaa21d6e1297fc837b3fc25
+-- hash: b5eddfda28634d31436d8e277f0a5f6267275e6c7be4eb7fe62d01882e58e4fe
 
 name:           generator
 version:        0.1.0.0
@@ -27,9 +27,9 @@ source-repository head
 
 library
   exposed-modules:
-      Ast
-      Parser
-      Render
+      Binah.CodeGen.Ast
+      Binah.CodeGen.Parser
+      Binah.CodeGen.Render
   other-modules:
       Paths_generator
   hs-source-dirs:

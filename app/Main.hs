@@ -7,8 +7,8 @@ import           System.Environment             ( getArgs )
 import           System.IO
 import           Text.Megaparsec                ( errorBundlePretty )
 
-import           Parser
-import           Render
+import           Binah.CodeGen.Parser
+import           Binah.CodeGen.Render
 
 main :: IO ()
 main = do

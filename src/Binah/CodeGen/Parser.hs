@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-module Parser
+module Binah.CodeGen.Parser
   ( parse
   )
 where
@@ -16,7 +16,7 @@ import qualified Text.Megaparsec.Char.Lexer    as L
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 
-import           Ast
+import           Binah.CodeGen.Ast
 
 type Parser = Parsec Void Text
 

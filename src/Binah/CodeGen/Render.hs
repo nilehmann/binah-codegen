@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Render
+module Binah.CodeGen.Render
   ( render
   )
 where
@@ -13,7 +13,7 @@ import qualified Data.Text                     as T
 import           Text.QuasiText
 import           Text.Printf
 
-import           Ast
+import           Binah.CodeGen.Ast
 
 render :: Binah -> Text
 render (Binah decls inline) = [embed|
