@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-module Parser where
+module Parser
+  ( parse
+  )
+where
 
 import           Control.Monad                  ( void )
 import           Data.Char
@@ -16,10 +19,8 @@ import           Ast
 
 type Parser = Parsec Void String
 
-parse :: FilePath -> String -> Binah
-parse f s = case runParser (binah <* eof) f s of
-  Left  pErrs -> Binah [] Nothing
-  Right e     -> e
+parse :: FilePath -> String -> Either (ParseErrorBundle String Void) Binah
+parse = runParser (binah <* eof)
 
 binah :: Parser Binah
 binah =
@@ -32,7 +33,7 @@ recDecl :: Parser Decl
 recDecl = L.indentBlock scn $ do
   name <- tycon sc
   return
-    (L.IndentMany Nothing
+    (L.IndentSome Nothing
                   (return . RecDecl . uncurry (Rec name) . partitionEithers)
                   (eitherP field assert)
     )
@@ -93,24 +94,16 @@ reftConst :: Parser () -> Parser Reft
 reftConst sc' = RConst <$> some (satisfy p) <* sc'
   where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][")
 
-asdf :: Parser String
-asdf = some (satisfy p) where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][")
-
 reftParen :: Parser () -> Parser Reft
 reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symbol = L.symbol sc
 
-lineComment :: Parser ()
-lineComment = L.skipLineComment "--"
+--------------------------------------------------------------------------------
+-- | Identifiers
+--------------------------------------------------------------------------------
 
-scn :: Parser ()
-scn = L.space space1 lineComment empty
-
-sc :: Parser ()
-sc = L.space (void $ some (char ' ' <|> char '\t')) lineComment empty
-
--- TODO: We should exclude other reserved words here as well
+-- TODO: We should put other reserved words here as well
 reserved :: Parser String
-reserved = symbol "assert" <|> symbol "deriving" where symbol = L.symbol sc
+reserved = string "assert" <|> string "deriving"
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')
@@ -128,6 +121,23 @@ var sc = L.lexeme sc smallid <?> "variable"
 
 policyVar :: Parser () -> Parser String
 policyVar sc = L.lexeme sc largeid <?> "policy name"
+
+--------------------------------------------------------------------------------
+-- | Spaces
+--------------------------------------------------------------------------------
+
+lineComment :: Parser ()
+lineComment = L.skipLineComment "--"
+
+scn :: Parser ()
+scn = L.space space1 lineComment empty
+
+sc :: Parser ()
+sc = L.space (void $ some (char ' ' <|> char '\t')) lineComment empty
+
+--------------------------------------------------------------------------------
+-- | Misc
+--------------------------------------------------------------------------------
 
 arrow :: Parser () -> Parser String
 arrow sc = L.symbol sc "->"

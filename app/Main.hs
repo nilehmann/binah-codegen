@@ -1,8 +1,9 @@
 module Main where
 
-import           Data.Text
+import qualified Data.Text.IO                  as T
 import           System.Environment             ( getArgs )
 import           System.IO
+import           Text.Megaparsec                ( errorBundlePretty )
 
 import           Parser
 import           Render
@@ -11,7 +12,9 @@ main :: IO ()
 main = do
   srcFile <- getSrcFile
   s       <- readFile srcFile
-  putStrLn . unpack . render $ parse srcFile s
+  case parse srcFile s of
+    Left  e     -> putStrLn (errorBundlePretty e)
+    Right binah -> T.putStrLn . render $ binah
 
 getSrcFile :: IO String
 getSrcFile = do
