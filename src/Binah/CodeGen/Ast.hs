@@ -59,7 +59,7 @@ data Field = Field
   , fieldPolicy :: FieldPolicy
   } deriving Show
 
-data FieldPolicy = InlinePolicy Policy | PolicyName String | PolicyNothing deriving Show
+data FieldPolicy = InlinePolicy Policy | PolicyName String | NoPolicy deriving Show
 
 data Reft
   = ROps [Reft] [String]

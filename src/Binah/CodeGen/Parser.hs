@@ -43,11 +43,12 @@ field :: Parser Field
 field = Field <$> var sc <*> tycon sc <*> policyField
 
 policyField :: Parser FieldPolicy
-policyField =  do
-  name <- optional (char '@' *> policyVar sc)
-  case name of
-    Nothing -> return PolicyNothing
-    Just name -> return (PolicyName name)
+policyField = policyName <|> inlinePolicy <|> noPolicy
+ where
+  symbol       = L.symbol sc
+  policyName   = PolicyName <$> (char '@' *> policyVar sc)
+  inlinePolicy = InlinePolicy <$> between (symbol "{") (symbol "}") (policy sc)
+  noPolicy     = pure NoPolicy
 
 assert :: Parser Assert
 assert = do
@@ -71,11 +72,18 @@ policyDecl = L.lineFold scn $ \sc' -> do
   symbol "policy"
   name <- policyVar sc'
   symbol "="
+  p <- policy sc'
+  scn
+  return (PolicyDecl name p)
+
+policy :: Parser () -> Parser Policy
+policy sc' = do
+  let symbol = L.symbol sc'
   symbol "\\"
   args <- someTill (var sc') $ arrow sc'
   body <- reft (try sc' <|> sc)
   scn
-  return (PolicyDecl name (Policy args body))
+  return (Policy args body)
 
 --------------------------------------------------------------------------------
 -- | Refinements
@@ -95,7 +103,7 @@ reftApp sc = RApp <$> some (reftConst sc <|> reftParen sc)
 
 reftConst :: Parser () -> Parser Reft
 reftConst sc' = RConst <$> some (satisfy p) <* sc'
-  where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][")
+  where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][{}")
 
 reftParen :: Parser () -> Parser Reft
 reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symbol = L.symbol sc

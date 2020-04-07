@@ -163,7 +163,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 entityField :: String -> Field -> Text
 entityField recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {\row viewer -> $(fmtPolicy policy)}
+    {$(fmtPolicy policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
   > _ _
@@ -175,9 +175,10 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
-  fmtPolicy PolicyNothing             = "True"
-  fmtPolicy (InlinePolicy _         ) = "True"
-  fmtPolicy (PolicyName   policyName) = printf "%s row viewer" policyName
+  fmtPolicy NoPolicy = "\\row viewer -> True"
+  fmtPolicy (InlinePolicy (Policy args body)) =
+    printf "\\%s -> %s" (unwords args) (renderReft body)
+  fmtPolicy (PolicyName policyName) = printf "\\row viewer -> %s row viewer" policyName
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
@@ -191,6 +192,13 @@ entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldNa
 mapHead :: (a -> a) -> [a] -> [a]
 mapHead f (x : xs) = f x : xs
 mapHead _ []       = []
+
+renderReft :: Reft -> String
+renderReft (ROps refts ops) = unwords $ interleave (map renderReft refts) ops
+renderReft (RApp   refts  ) = unwords (map renderReft refts)
+renderReft (RParen reft   ) = printf "(%s)" (renderReft reft)
+renderReft (RConst s      ) = s
+
 
 --------------------------------------------------------------------------------
 -- | Helpers
