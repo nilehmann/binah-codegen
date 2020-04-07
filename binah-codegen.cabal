@@ -4,13 +4,13 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b5eddfda28634d31436d8e277f0a5f6267275e6c7be4eb7fe62d01882e58e4fe
+-- hash: 1f07ee19e2ec34db80dc8151a69dd757e9a19572e034b6a114b1fc616b9b1cbf
 
-name:           generator
+name:           binah-codegen
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/nilehmann/generator#readme>
-homepage:       https://github.com/nilehmann/generator#readme
-bug-reports:    https://github.com/nilehmann/generator/issues
+description:    Please see the README on GitHub at <https://github.com/nilehmann/binah-codegen#readme>
+homepage:       https://github.com/nilehmann/binah-codegen#readme
+bug-reports:    https://github.com/nilehmann/binah-codegen/issues
 author:         Nico Lehmann
 maintainer:     nlehmann@eng.ucsd.edu
 copyright:      2020 Nico Lehmann
@@ -23,7 +23,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/nilehmann/generator
+  location: https://github.com/nilehmann/binah-codegen
 
 library
   exposed-modules:
@@ -31,7 +31,7 @@ library
       Binah.CodeGen.Parser
       Binah.CodeGen.Render
   other-modules:
-      Paths_generator
+      Paths_binah_codegen
   hs-source-dirs:
       src
   build-depends:
@@ -43,36 +43,36 @@ library
     , text
   default-language: Haskell2010
 
-executable generator-exe
+executable binah-codegen
   main-is: Main.hs
   other-modules:
-      Paths_generator
+      Paths_binah_codegen
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuasiText
     , base >=4.7 && <5
+    , binah-codegen
     , containers
-    , generator
     , megaparsec
     , raw-strings-qq
     , text
   default-language: Haskell2010
 
-test-suite generator-test
+test-suite binah-codegen-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_generator
+      Paths_binah_codegen
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuasiText
     , base >=4.7 && <5
+    , binah-codegen
     , containers
-    , generator
     , megaparsec
     , raw-strings-qq
     , text

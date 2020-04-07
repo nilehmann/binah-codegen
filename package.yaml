@@ -1,6 +1,6 @@
-name:                generator
+name:                binah-codegen
 version:             0.1.0.0
-github:              "nilehmann/generator"
+github:              "nilehmann/binah-codegen"
 license:             BSD3
 author:              "Nico Lehmann"
 maintainer:          "nlehmann@eng.ucsd.edu"
@@ -17,7 +17,7 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/nilehmann/generator#readme>
+description:         Please see the README on GitHub at <https://github.com/nilehmann/binah-codegen#readme>
 
 dependencies:
 - base >= 4.7 && < 5
@@ -31,7 +31,7 @@ library:
   source-dirs: src
 
 executables:
-  generator-exe:
+  binah-codegen:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -39,10 +39,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - generator
+    - binah-codegen
 
 tests:
-  generator-test:
+  binah-codegen-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -50,4 +50,4 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - generator
+    - binah-codegen
