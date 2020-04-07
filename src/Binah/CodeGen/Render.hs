@@ -40,7 +40,7 @@ import qualified Database.Persist              as Persist
 import           Binah.Core
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-$(it "\n\n" persistentRecord records)
+$(it persistentRecord records "\n\n")
 $qqEnd
 
 {-@
@@ -57,19 +57,19 @@ data EntityFieldWrapper record typ = EntityFieldWrapper (Persist.EntityField rec
 -- | Predicates
 --------------------------------------------------------------------------------
 
-$(it "\n\n" predicate preds)
+$(it predicateDecl preds "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Policies
 --------------------------------------------------------------------------------
 
-$(it "\n\n" (uncurry $ policy accessors) policies)
+$(it (uncurry $ policyDecl accessors) policies "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Records
 --------------------------------------------------------------------------------
 
-$(it "\n\n" binahRecord records)
+$(it binahRecord records "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -89,17 +89,17 @@ $(fromMaybe "" inline)
 persistentRecord :: Rec -> Text
 persistentRecord (Rec name fields _) = [embed|
 $name
-  $(it "\n  " fmtField fields)
+  $(it fmtField fields "\n  ")
 |]
   where fmtField (Field name typ _) = printf "%s %s" name typ :: String
 
-predicate :: Pred -> Text
-predicate (Pred name argtys) = [embed|
-{-@ measure $name :: $(it " -> " id argtys) -> Bool @-}
+predicateDecl :: Pred -> Text
+predicateDecl (Pred name argtys) = [embed|
+{-@ measure $name :: $(it id argtys " -> ") -> Bool @-}
 |]
 
-policy :: [String] -> String -> Policy -> Text
-policy accessors name (Policy args body) = [embed|
+policyDecl :: [String] -> String -> Policy -> Text
+policyDecl accessors name (Policy args body) = [embed|
 {-@ predicate $name $(upper (unwords args)) = $(f body) @-}
 |]
  where
@@ -120,15 +120,15 @@ binahRecord (Rec recName fields asserts) = [embed|
 -- * $recName
 
 {-@ data $recName = $recName
-  { $(it "\n  , " fmtField fields)
+  { $(it fmtField fields "\n  , ")
   }
 @-}
 
-$(it "\n\n" (assert recName fields) asserts)
+$(it (assert recName fields) asserts "\n\n")
 
 $(entityKey recName)
 
-$(it "\n\n" (entityField recName) fields)
+$(it (entityField recName) fields "\n\n")
 |]
   where fmtField (Field name _ _) = printf "%s :: _" (accessorName recName name) :: String
 
@@ -204,8 +204,8 @@ renderReft (RConst s      ) = s
 -- | Helpers
 --------------------------------------------------------------------------------
 
-it :: (ToText a, ToText c) => a -> (b -> c) -> [b] -> Text
-it separator f = T.intercalate (toText separator) . map (toText . f)
+it :: (ToText sep, ToText b) => (a -> b) -> [a] -> sep -> Text
+it f xs sep = T.intercalate (toText sep) . map (toText . f) $ xs
 
 class ToText a where
   toText :: a -> Text
