@@ -1,9 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
 
-module Parser
-  ( parse
-  )
-where
+module Parser where
 
 import           Control.Monad                  ( void )
 import           Data.Char
@@ -12,16 +10,94 @@ import           Data.Void
 import           Text.Megaparsec         hiding ( parse )
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as L
+import qualified Data.Text                     as T
 
 import           Ast
 
 type Parser = Parsec Void String
 
-parse :: FilePath -> String -> Decls
-parse f s = case runParser (decls <* eof) f s of
-  Left  pErrs -> Decls []
+parse :: FilePath -> String -> Binah
+parse f s = case runParser (binah <* eof) f s of
+  Left  pErrs -> Binah [] Nothing
   Right e     -> e
 
+binah :: Parser Binah
+binah =
+  L.nonIndented scn (Binah <$> many (predDecl <|> recDecl <|> policyDecl) <*> optional inline)
+
+inline :: Parser String
+inline = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
+
+recDecl :: Parser Decl
+recDecl = L.indentBlock scn $ do
+  name <- tycon sc
+  return
+    (L.IndentMany Nothing
+                  (return . RecDecl . uncurry (Rec name) . partitionEithers)
+                  (eitherP field assert)
+    )
+
+field :: Parser Field
+field = do
+  name   <- var sc
+  ty     <- tycon sc
+  policy <- optional (char '@' *> policyVar sc)
+  return $ Field name ty policy
+
+assert :: Parser Assert
+assert = do
+  symbol "assert"
+  Assert <$> between (symbol "[") (symbol "]") (reft sc)
+  where symbol = L.symbol sc
+
+
+predDecl :: Parser Decl
+predDecl = L.lineFold scn $ \sc' -> do
+  let symbol = L.symbol sc'
+  symbol "predicate"
+  name <- var sc'
+  symbol "::"
+  argtys <- someTill (tycon sc' <* arrow sc') $ string "Bool"
+  scn
+  return . PredDecl $ Pred name argtys
+
+policyDecl :: Parser Decl
+policyDecl = L.lineFold scn $ \sc' -> do
+  let symbol = L.symbol sc'
+  symbol "policy"
+  name <- policyVar sc'
+  symbol "="
+  symbol "\\"
+  args <- someTill (var sc') $ arrow sc'
+  body <- reft (try sc' <|> sc)
+  scn
+  return . PolicyDecl $ Policy name args body
+
+--------------------------------------------------------------------------------
+-- | Refinements
+--------------------------------------------------------------------------------
+
+ascSymbols :: String
+ascSymbols = "!#$%&⋆+./<=>?@\\^|-~:"
+
+op :: Parser () -> Parser String
+op sc = L.lexeme sc $ some (oneOf ascSymbols <|> symbolChar)
+
+reft :: Parser () -> Parser Reft
+reft sc = uncurry ROps <$> reftApp sc `sepBy1_` op sc
+
+reftApp :: Parser () -> Parser Reft
+reftApp sc = RApp <$> some (reftConst sc <|> reftParen sc)
+
+reftConst :: Parser () -> Parser Reft
+reftConst sc' = RConst <$> some (satisfy p) <* sc'
+  where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][")
+
+asdf :: Parser String
+asdf = some (satisfy p) where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][")
+
+reftParen :: Parser () -> Parser Reft
+reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symbol = L.symbol sc
 
 lineComment :: Parser ()
 lineComment = L.skipLineComment "--"
@@ -34,7 +110,7 @@ sc = L.space (void $ some (char ' ' <|> char '\t')) lineComment empty
 
 -- TODO: We should exclude other reserved words here as well
 reserved :: Parser String
-reserved = L.symbol sc "assert"
+reserved = symbol "assert" <|> symbol "deriving" where symbol = L.symbol sc
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')
@@ -56,52 +132,8 @@ policyVar sc = L.lexeme sc largeid <?> "policy name"
 arrow :: Parser () -> Parser String
 arrow sc = L.symbol sc "->"
 
-decls :: Parser Decls
-decls = L.nonIndented scn $ Decls <$> many (predDecl <|> recDecl <|> policyDecl)
-
-field :: Parser Field
-field = do
-  name   <- var sc
-  ty     <- tycon sc
-  policy <- optional (char '@' *> policyVar sc)
-  return $ Field name ty policy
-
-assert :: Parser Assert
-assert = do
-  symbol "assert"
-  Assert <$> between (symbol "[") (symbol "]") tokens
- where
-  symbol = L.symbol sc
-  exclude c = isSpace c || c `elem` ['[', ']']
-  tokens = some (satisfy $ not . exclude) `sepBy1` sc
-
-recDecl :: Parser Decl
-recDecl = L.indentBlock scn $ do
-  name <- tycon sc
-  return
-    (L.IndentMany Nothing
-                  (return . RecDecl . uncurry (Rec name) . partitionEithers)
-                  (eitherP field assert)
-    )
-
-predDecl :: Parser Decl
-predDecl = L.lineFold scn $ \sc' -> do
-  let symbol = L.symbol sc'
-  symbol "predicate"
-  name <- var sc'
-  symbol "::"
-  argtys <- someTill (tycon sc' <* arrow sc') $ string "Bool"
-  scn
-  return . PredDecl $ Pred name argtys
-
-policyDecl :: Parser Decl
-policyDecl = L.lineFold scn $ \sc' -> do
-  let symbol = L.symbol sc'
-  symbol "policy"
-  name <- policyVar sc'
-  symbol "="
-  symbol "\\"
-  args <- someTill (var sc') $ arrow sc'
-  body <- some (satisfy (not . isSpace)) `sepBy1` try sc'
-  scn
-  return . PolicyDecl $ Policy name args body
+sepBy1_ :: Parser a -> Parser sep -> Parser ([a], [sep])
+sepBy1_ p sep = do
+  x        <- p
+  (ys, xs) <- unzip <$> many ((,) <$> sep <*> p)
+  return (x : xs, ys)

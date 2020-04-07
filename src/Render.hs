@@ -1,12 +1,10 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Render
-  ( render
-  )
-where
+module Render where
 
 import           Data.Char
+import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Text.QuasiText
@@ -14,8 +12,8 @@ import           Text.Printf
 
 import           Ast
 
-render :: Decls -> Text
-render decls = [embed|
+render :: Binah -> Text
+render (Binah decls inline) = [embed|
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -40,7 +38,7 @@ import           Binah.Core
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 $(it "\n\n" persistentRecord records)
-|~]
+$qqEnd
 
 {-@
 data EntityFieldWrapper record typ < policy :: Entity record -> Entity User -> Bool
@@ -62,18 +60,29 @@ $(it "\n\n" predicate preds)
 -- | Policies
 --------------------------------------------------------------------------------
 
-$(it "\n\n" policy policies)
+$(it "\n\n" (policy accessors) policies)
 
 --------------------------------------------------------------------------------
 -- | Records
 --------------------------------------------------------------------------------
 
 $(it "\n\n" binahRecord records)
+
+
+--------------------------------------------------------------------------------
+-- | Inline
+--------------------------------------------------------------------------------
+
+$(fromMaybe "" inline)
+
 |]
  where
+  qqEnd    = "|]"
   records  = recordDecls decls
   preds    = predDecls decls
   policies = policyDecls decls
+  accessors =
+    concatMap (\(Rec name fields _) -> map (accessorName name . fieldName) fields) records
 
 persistentRecord :: Rec -> Text
 persistentRecord (Rec name fields _) = [embed|
@@ -87,13 +96,22 @@ predicate (Pred name argtys) = [embed|
 {-@ measure $name :: $(it " -> " id argtys) -> Bool @-}
 |]
 
-policy (Policy name args body) = [embed|
-{-@ predicate $name $(upper (unwords args)) = $(unwords (map upperIfArg body)) @-}
+policy :: [String] -> Policy -> Text
+policy accessors (Policy name args body) = [embed|
+{-@ predicate $name $(upper (unwords args)) = $(f body) @-}
 |]
  where
   upper = map toUpper
-  upperIfArg t | t `elem` args = upper t
-  upperIfArg t                 = t
+  f (ROps refts ops)           = unwords $ interleave (map f refts) ops
+  f (RApp [RConst s, r]) | s `elem` accessors = printf "%s (entityVal %s)" s (f r)
+  f (RApp   refts)             = unwords (map f refts)
+  f (RParen reft )             = printf "(%s)" (f reft)
+  f (RConst s) | s `elem` args = map toUpper s
+  f (RConst s)                 = s
+
+interleave :: [a] -> [a] -> [a]
+interleave (x : xs) ys = x : interleave ys xs
+interleave []       ys = ys
 
 binahRecord :: Rec -> Text
 binahRecord (Rec recName fields asserts) = [embed|
@@ -114,43 +132,58 @@ $(it "\n\n" (entityField recName) fields)
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
-{-@ invariant {v: $recName | $(it " " f body) } @-}
+{-@ invariant {v: Entity $recName | $(f body)} @-}
 |]
  where
   fieldNames = map fieldName fields
-  f x | x `elem` fieldNames = printf "(%s (entityVal v))" (accessorName recName x)
-  f x | x == "entityKey"    = "(entityKey v)"
-  f x                       = x
+  f (ROps refts ops)                 = unwords $ interleave (map f refts) ops
+  f (RApp   refts  )                 = unwords (map f refts)
+  f (RParen reft   )                 = printf "(%s)" (f reft)
+  f (RConst s) | s `elem` fieldNames = printf "(%s (entityVal v))" (accessorName recName s)
+  f (RConst s) | s == "entityKey"    = "(entityKey v)"
+  f (RConst s)                       = s
 
+entityKey :: String -> Text
 entityKey recName = [embed|
-{-@ assume $entityField :: EntityFieldWrapper <
+{-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {\row viewer -> True}
   , {\row field  -> field == entityKey row}
   , {\field row  -> field == entityKey row}
-  >
+  > _ _
 @-}
+$entityFieldBinah :: EntityFieldWrapper $recName $entityFieldPersistent
+$entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 |]
-  where entityField = entityFieldName recName "id"
+ where
+  entityFieldBinah      = entityFieldBinahName recName "id"
+  entityFieldPersistent = entityFieldPersistentName recName "id"
 
+entityField :: String -> Field -> Text
 entityField recName (Field fieldName typ policy) = [embed|
-{-@ assume $entityField :: EntityFieldWrapper <
+{-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {\row viewer -> $(fmtPolicy policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
-  >
+  > _ _
 @-}
+$entityFieldBinah :: EntityFieldWrapper $recName $typ
+$entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 |]
  where
-  entityField = entityFieldName recName fieldName
-  accessor    = accessorName recName fieldName
+  accessor              = accessorName recName fieldName
+  entityFieldBinah      = entityFieldBinahName recName fieldName
+  entityFieldPersistent = entityFieldPersistentName recName fieldName
   fmtPolicy Nothing           = "True"
   fmtPolicy (Just policyName) = printf "%s row viewer" policyName
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
 
-entityFieldName :: String -> String -> String
-entityFieldName recName fieldName = accessorName recName fieldName ++ "'"
+entityFieldBinahName :: String -> String -> String
+entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
+
+entityFieldPersistentName :: String -> String -> String
+entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName
 
 mapHead :: (a -> a) -> [a] -> [a]
 mapHead f (x : xs) = f x : xs

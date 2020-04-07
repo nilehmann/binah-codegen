@@ -4,22 +4,26 @@ import           Data.Typeable
 import           Data.Data
 import           Data.Maybe
 
-newtype Decls = Decls [Decl] deriving Show
+data Binah = Binah
+  { binahDecls  :: [Decl]
+  , binahInline :: Maybe String
+  }
+  deriving Show
 
-recordDecls :: Decls -> [Rec]
-recordDecls (Decls decls) = mapMaybe f decls
+recordDecls :: [Decl] -> [Rec]
+recordDecls = mapMaybe f
  where
   f (RecDecl record) = Just record
   f _                = Nothing
 
-predDecls :: Decls -> [Pred]
-predDecls (Decls decls) = mapMaybe f decls
+predDecls :: [Decl] -> [Pred]
+predDecls = mapMaybe f
  where
   f (PredDecl pred) = Just pred
   f _               = Nothing
 
-policyDecls :: Decls -> [Policy]
-policyDecls (Decls decls) = mapMaybe f decls
+policyDecls :: [Decl] -> [Policy]
+policyDecls = mapMaybe f
  where
   f (PolicyDecl pred) = Just pred
   f _                 = Nothing
@@ -46,7 +50,7 @@ data Pred = Pred
 data Policy = Policy
   { policyName :: String
   , policyArgs :: [String]
-  , policyBody :: [String]
+  , policyBody :: Reft
   }
   deriving Show
 
@@ -56,4 +60,11 @@ data Field = Field
   , fieldPolicy :: Maybe String
   } deriving Show
 
-newtype Assert = Assert [String] deriving Show
+data Reft
+  = ROps [Reft] [String]
+  | RApp [Reft]
+  | RParen Reft
+  | RConst String
+  deriving Show
+
+newtype Assert = Assert Reft deriving Show
