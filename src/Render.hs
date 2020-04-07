@@ -1,7 +1,10 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Render where
+module Render
+  ( render
+  )
+where
 
 import           Data.Char
 import           Data.Maybe

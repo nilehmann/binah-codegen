@@ -13,13 +13,14 @@ import           Data.Void
 import           Text.Megaparsec         hiding ( parse )
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as L
+import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 
 import           Ast
 
-type Parser = Parsec Void String
+type Parser = Parsec Void Text
 
-parse :: FilePath -> String -> Either (ParseErrorBundle String Void) Binah
+parse :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Binah
 parse = runParser (binah <* eof)
 
 binah :: Parser Binah
@@ -102,7 +103,7 @@ reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symb
 --------------------------------------------------------------------------------
 
 -- TODO: We should put other reserved words here as well
-reserved :: Parser String
+reserved :: Parser Text
 reserved = string "assert" <|> string "deriving"
 
 largeid :: Parser String
@@ -139,7 +140,7 @@ sc = L.space (void $ some (char ' ' <|> char '\t')) lineComment empty
 -- | Misc
 --------------------------------------------------------------------------------
 
-arrow :: Parser () -> Parser String
+arrow :: Parser () -> Parser Text
 arrow sc = L.symbol sc "->"
 
 sepBy1_ :: Parser a -> Parser sep -> Parser ([a], [sep])

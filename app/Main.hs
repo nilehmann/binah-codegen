@@ -1,5 +1,7 @@
 module Main where
 
+import           Data.Text                      ( Text )
+import qualified Data.Text                     as T
 import qualified Data.Text.IO                  as T
 import           System.Environment             ( getArgs )
 import           System.IO
@@ -11,7 +13,7 @@ import           Render
 main :: IO ()
 main = do
   srcFile <- getSrcFile
-  s       <- readFile srcFile
+  s       <- T.readFile srcFile
   case parse srcFile s of
     Left  e     -> putStrLn (errorBundlePretty e)
     Right binah -> T.putStrLn . render $ binah
