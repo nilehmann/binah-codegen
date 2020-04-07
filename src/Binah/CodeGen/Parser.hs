@@ -40,18 +40,20 @@ recDecl = L.indentBlock scn $ do
     )
 
 field :: Parser Field
-field = do
-  name   <- var sc
-  ty     <- tycon sc
-  policy <- optional (char '@' *> policyVar sc)
-  return $ Field name ty policy
+field = Field <$> var sc <*> tycon sc <*> policyField
+
+policyField :: Parser FieldPolicy
+policyField =  do
+  name <- optional (char '@' *> policyVar sc)
+  case name of
+    Nothing -> return PolicyNothing
+    Just name -> return (PolicyName name)
 
 assert :: Parser Assert
 assert = do
   symbol "assert"
   Assert <$> between (symbol "[") (symbol "]") (reft sc)
   where symbol = L.symbol sc
-
 
 predDecl :: Parser Decl
 predDecl = L.lineFold scn $ \sc' -> do
@@ -73,7 +75,7 @@ policyDecl = L.lineFold scn $ \sc' -> do
   args <- someTill (var sc') $ arrow sc'
   body <- reft (try sc' <|> sc)
   scn
-  return . PolicyDecl $ Policy name args body
+  return (PolicyDecl name (Policy args body))
 
 --------------------------------------------------------------------------------
 -- | Refinements

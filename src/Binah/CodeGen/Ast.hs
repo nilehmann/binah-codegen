@@ -22,16 +22,16 @@ predDecls = mapMaybe f
   f (PredDecl pred) = Just pred
   f _               = Nothing
 
-policyDecls :: [Decl] -> [Policy]
+policyDecls :: [Decl] -> [(String, Policy)]
 policyDecls = mapMaybe f
  where
-  f (PolicyDecl pred) = Just pred
+  f (PolicyDecl name pred) = Just (name, pred)
   f _                 = Nothing
 
 data Decl
   = RecDecl Rec
   | PredDecl Pred
-  | PolicyDecl Policy
+  | PolicyDecl String Policy
   deriving Show
 
 data Rec = Rec
@@ -48,8 +48,7 @@ data Pred = Pred
   deriving Show
 
 data Policy = Policy
-  { policyName :: String
-  , policyArgs :: [String]
+  { policyArgs :: [String]
   , policyBody :: Reft
   }
   deriving Show
@@ -57,8 +56,10 @@ data Policy = Policy
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
-  , fieldPolicy :: Maybe String
+  , fieldPolicy :: FieldPolicy
   } deriving Show
+
+data FieldPolicy = InlinePolicy Policy | PolicyName String | PolicyNothing deriving Show
 
 data Reft
   = ROps [Reft] [String]

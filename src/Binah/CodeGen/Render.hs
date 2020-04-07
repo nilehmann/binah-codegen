@@ -63,14 +63,13 @@ $(it "\n\n" predicate preds)
 -- | Policies
 --------------------------------------------------------------------------------
 
-$(it "\n\n" (policy accessors) policies)
+$(it "\n\n" (uncurry $ policy accessors) policies)
 
 --------------------------------------------------------------------------------
 -- | Records
 --------------------------------------------------------------------------------
 
 $(it "\n\n" binahRecord records)
-
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -99,8 +98,8 @@ predicate (Pred name argtys) = [embed|
 {-@ measure $name :: $(it " -> " id argtys) -> Bool @-}
 |]
 
-policy :: [String] -> Policy -> Text
-policy accessors (Policy name args body) = [embed|
+policy :: [String] -> String -> Policy -> Text
+policy accessors name (Policy args body) = [embed|
 {-@ predicate $name $(upper (unwords args)) = $(f body) @-}
 |]
  where
@@ -176,8 +175,9 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
-  fmtPolicy Nothing           = "True"
-  fmtPolicy (Just policyName) = printf "%s row viewer" policyName
+  fmtPolicy PolicyNothing             = "True"
+  fmtPolicy (InlinePolicy _         ) = "True"
+  fmtPolicy (PolicyName   policyName) = printf "%s row viewer" policyName
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
