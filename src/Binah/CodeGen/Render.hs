@@ -100,16 +100,17 @@ predicateDecl (Pred name argtys) = [embed|
 
 policyDecl :: [String] -> String -> Policy -> Text
 policyDecl accessors name (Policy args body) = [embed|
-{-@ predicate $name $(upper (unwords args)) = $(f body) @-}
+{-@ predicate $name $(upper (unwords args)) = $(renderReft (f body)) @-}
 |]
  where
   upper = map toUpper
-  f (ROps refts ops)           = unwords $ interleave (map f refts) ops
-  f (RApp [RConst s, r]) | s `elem` accessors = printf "%s (entityVal %s)" s (f r)
-  f (RApp   refts)             = unwords (map f refts)
-  f (RParen reft )             = printf "(%s)" (f reft)
-  f (RConst s) | s `elem` args = map toUpper s
-  f (RConst s)                 = s
+  f (ROps refts ops) = ROps (map f refts) ops
+  f (RApp [RConst s, r]) | s `elem` accessors =
+    RApp [RConst s, RParen (RApp [RConst "entityVal", f r])]
+  f (RApp   refts)             = RApp (map f refts)
+  f (RParen reft )             = RParen (f reft)
+  f (RConst s) | s `elem` args = RConst $ map toUpper s
+  f (RConst s)                 = RConst s
 
 interleave :: [a] -> [a] -> [a]
 interleave (x : xs) ys = x : interleave ys xs
@@ -134,16 +135,17 @@ $(it (entityField recName) fields "\n\n")
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
-{-@ invariant {v: Entity $recName | $(f body)} @-}
+{-@ invariant {v: Entity $recName | $(renderReft (f body))} @-}
 |]
  where
   fieldNames = map fieldName fields
-  f (ROps refts ops)                 = unwords $ interleave (map f refts) ops
-  f (RApp   refts  )                 = unwords (map f refts)
-  f (RParen reft   )                 = printf "(%s)" (f reft)
-  f (RConst s) | s `elem` fieldNames = printf "(%s (entityVal v))" (accessorName recName s)
-  f (RConst s) | s == "entityKey"    = "(entityKey v)"
-  f (RConst s)                       = s
+  f (ROps refts ops) = ROps (map f refts) ops
+  f (RApp   refts  ) = RApp (map f refts)
+  f (RParen reft   ) = RParen (f reft)
+  f (RConst s) | s `elem` fieldNames =
+    RParen (RApp [RConst (accessorName recName s), RParen (RApp [RConst "entityVal", RConst "v"])])
+  f (RConst s) | s == "entityKey" = RParen (RApp [RConst "entityKey", RConst "v"])
+  f (RConst s)                    = RConst s
 
 entityKey :: String -> Text
 entityKey recName = [embed|
@@ -198,7 +200,6 @@ renderReft (ROps refts ops) = unwords $ interleave (map renderReft refts) ops
 renderReft (RApp   refts  ) = unwords (map renderReft refts)
 renderReft (RParen reft   ) = printf "(%s)" (renderReft reft)
 renderReft (RConst s      ) = s
-
 
 --------------------------------------------------------------------------------
 -- | Helpers

@@ -4,6 +4,7 @@ import           Data.Typeable
 import           Data.Data
 import           Data.Maybe
 
+
 data Binah = Binah
   { binahDecls  :: [Decl]
   , binahInline :: Maybe String
