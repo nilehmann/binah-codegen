@@ -69,7 +69,9 @@ $(it (uncurry $ policyDecl accessors) policies "\n\n")
 -- | Records
 --------------------------------------------------------------------------------
 
-$(it binahRecord records "\n\n")
+{-@ measure getJust :: Key record -> Entity record @-}
+
+$(it (binahRecord accessors) records "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -104,20 +106,10 @@ policyDecl accessors name (Policy args body) = [embed|
 |]
  where
   upper = map toUpper
-  f (ROps refts ops) = ROps (map f refts) ops
-  f (RApp [RConst s, r]) | s `elem` accessors =
-    RApp [RConst s, RParen (RApp [RConst "entityVal", f r])]
-  f (RApp   refts)             = RApp (map f refts)
-  f (RParen reft )             = RParen (f reft)
-  f (RConst s) | s `elem` args = RConst $ map toUpper s
-  f (RConst s)                 = RConst s
+  f     = argsToUpper args . insertEntityVal accessors
 
-interleave :: [a] -> [a] -> [a]
-interleave (x : xs) ys = x : interleave ys xs
-interleave []       ys = ys
-
-binahRecord :: Rec -> Text
-binahRecord (Rec recName fields asserts) = [embed|
+binahRecord :: [String] -> Rec -> Text
+binahRecord accessors (Rec recName fields asserts) = [embed|
 -- * $recName
 
 {-@ data $recName = $recName
@@ -125,11 +117,13 @@ binahRecord (Rec recName fields asserts) = [embed|
   }
 @-}
 
+{-@ invariant {v: Entity $recName | v == getJust (entityKey v)} @-}
+
 $(it (assert recName fields) asserts "\n\n")
 
 $(entityKey recName)
 
-$(it (entityField recName) fields "\n\n")
+$(it (entityField accessors recName) fields "\n\n")
 |]
   where fmtField (Field name _ _) = printf "%s :: _" (accessorName recName name) :: String
 
@@ -162,8 +156,8 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName "id"
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
-entityField :: String -> Field -> Text
-entityField recName (Field fieldName typ policy) = [embed|
+entityField :: [String] -> String -> Field -> Text
+entityField accessors recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {$(fmtPolicy policy)}
   , {\row field  -> field == $accessor (entityVal row)}
@@ -179,7 +173,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName fieldName
   fmtPolicy NoPolicy = "\\row viewer -> True"
   fmtPolicy (InlinePolicy (Policy args body)) =
-    printf "\\%s -> %s" (unwords args) (renderReft body)
+    printf "\\%s -> %s" (unwords args) (renderReft (insertEntityVal accessors body))
   fmtPolicy (PolicyName policyName) = printf "\\row viewer -> %s row viewer" policyName
 
 accessorName :: String -> String -> String
@@ -191,15 +185,35 @@ entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
 entityFieldPersistentName :: String -> String -> String
 entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName
 
-mapHead :: (a -> a) -> [a] -> [a]
-mapHead f (x : xs) = f x : xs
-mapHead _ []       = []
+--------------------------------------------------------------------------------
+-- | Refinements
+--------------------------------------------------------------------------------
+
 
 renderReft :: Reft -> String
 renderReft (ROps refts ops) = unwords $ interleave (map renderReft refts) ops
 renderReft (RApp   refts  ) = unwords (map renderReft refts)
 renderReft (RParen reft   ) = printf "(%s)" (renderReft reft)
 renderReft (RConst s      ) = s
+
+insertEntityVal :: [String] -> Reft -> Reft
+insertEntityVal accessors = f
+ where
+  f (ROps refts ops) = ROps (map f refts) ops
+  f (RApp [RConst s, r]) | s `elem` accessors =
+    RApp [RConst s, RParen (RApp [RConst "entityVal", f r])]
+  f (RApp   refts) = RApp (map f refts)
+  f (RParen reft ) = RParen (f reft)
+  f (RConst s    ) = RConst s
+
+argsToUpper :: [String] -> Reft -> Reft
+argsToUpper args = f
+ where
+  f (ROps refts ops)           = ROps (map f refts) ops
+  f (RApp   refts  )           = RApp (map f refts)
+  f (RParen reft   )           = RParen (f reft)
+  f (RConst s) | s `elem` args = RConst $ map toUpper s
+  f (RConst s)                 = RConst s
 
 --------------------------------------------------------------------------------
 -- | Helpers
@@ -216,3 +230,11 @@ instance ToText Text where
 
 instance ToText [Char] where
   toText = T.pack
+
+interleave :: [a] -> [a] -> [a]
+interleave (x : xs) ys = x : interleave ys xs
+interleave []       ys = ys
+
+mapHead :: (a -> a) -> [a] -> [a]
+mapHead f (x : xs) = f x : xs
+mapHead _ []       = []

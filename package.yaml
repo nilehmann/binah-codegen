@@ -1,14 +1,14 @@
-name:                binah-codegen
-version:             0.1.0.0
-github:              "nilehmann/binah-codegen"
-license:             BSD3
-author:              "Nico Lehmann"
-maintainer:          "nlehmann@eng.ucsd.edu"
-copyright:           "2020 Nico Lehmann"
+name: binah-codegen
+version: 0.1.0.0
+github: "nilehmann/binah-codegen"
+license: BSD3
+author: "Nico Lehmann"
+maintainer: "nlehmann@eng.ucsd.edu"
+copyright: "2020 Nico Lehmann"
 
 extra-source-files:
-- README.md
-- ChangeLog.md
+  - README.md
+  - ChangeLog.md
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -17,37 +17,37 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/nilehmann/binah-codegen#readme>
+description: Please see the README on GitHub at <https://github.com/nilehmann/binah-codegen#readme>
 
 dependencies:
-- base >= 4.7 && < 5
-- containers
-- QuasiText
-- megaparsec
-- text
-- raw-strings-qq
+  - base >= 4.7 && < 5
+  - containers
+  - QuasiText
+  - megaparsec
+  - text
+  - raw-strings-qq
 
 library:
   source-dirs: src
 
 executables:
   binah-codegen:
-    main:                Main.hs
-    source-dirs:         app
+    main: Main.hs
+    source-dirs: app
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - binah-codegen
+      - binah-codegen
 
 tests:
   binah-codegen-test:
-    main:                Spec.hs
-    source-dirs:         test
+    main: Spec.hs
+    source-dirs: test
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - binah-codegen
+      - binah-codegen

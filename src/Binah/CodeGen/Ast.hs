@@ -27,7 +27,7 @@ policyDecls :: [Decl] -> [(String, Policy)]
 policyDecls = mapMaybe f
  where
   f (PolicyDecl name pred) = Just (name, pred)
-  f _                 = Nothing
+  f _                      = Nothing
 
 data Decl
   = RecDecl Rec
