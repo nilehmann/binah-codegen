@@ -25,7 +25,11 @@ render (Binah decls inline) = [embed|
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Model where
+module Model 
+  ( $(it id (exports records) "\n  , ")
+  )
+
+where
 
 import           Database.Persist               ( Key )
 import           Database.Persist.TH            ( share
@@ -69,9 +73,23 @@ $(it (uncurry $ policyDecl accessors) policies "\n\n")
 -- | Records
 --------------------------------------------------------------------------------
 
+{-@ data BinahRecord record < 
+    p :: record -> Bool
+  , insertpolicy :: Entity record -> Entity User -> Bool
+  , querypolicy  :: Entity record -> Entity User -> Bool 
+  >
+  = BinahRecord _
+@-}
+data BinahRecord record = BinahRecord record
+{-@ data variance BinahRecord invariant invariant invariant invariant @-}
+
+{-@ persistentRecord :: BinahRecord record -> record @-}
+persistentRecord :: BinahRecord record -> record
+persistentRecord (BinahRecord record) = record
+
 {-@ measure getJust :: Key record -> Entity record @-}
 
-$(it (binahRecord accessors) records "\n\n")
+$(it (binahRecord policies accessors) records "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -87,6 +105,23 @@ $(fromMaybe "" inline)
   policies = policyDecls decls
   accessors =
     concatMap (\(Rec name fields _) -> map (accessorName name . fieldName) fields) records
+
+exports :: [Rec] -> [String]
+exports records =
+  ["EntityFieldWrapper(..)", "migrateAll", "BinahRecord", "persistentRecord"]
+    ++ mkFuns
+    ++ recNames
+    ++ entityFields
+    ++ recIds
+ where
+  recNames     = map recName records
+  recIds       = map (++ "Id") recNames
+  mkFuns       = map ("mk" ++) recNames
+  entityFields = concatMap
+    (\(Rec name fields _) ->
+      entityFieldBinahName name "id" : map (entityFieldBinahName name . fieldName) fields
+    )
+    records
 
 persistentRecord :: Rec -> Text
 persistentRecord (Rec name fields _) = [embed|
@@ -108,14 +143,21 @@ policyDecl accessors name (Policy args body) = [embed|
   upper = map toUpper
   f     = argsToUpper args . insertEntityVal accessors
 
-binahRecord :: [String] -> Rec -> Text
-binahRecord accessors (Rec recName fields asserts) = [embed|
+binahRecord :: [(String, Policy)] -> [String] -> Rec -> Text
+binahRecord policies accessors (Rec recName fields asserts) = [embed|
 -- * $recName
 
-{-@ data $recName = $recName
-  { $(it fmtField fields "\n  , ")
-  }
+$(it fmtField fields "\n")
+
+{-@ mk$recName :: 
+     $(it id argTys "\n  -> ")
+  -> BinahRecord < 
+       {\row -> True}
+     , {\row viewer -> True}
+     , {\row viewer -> True}
+     > $recName
 @-}
+mk$recName $argNames = BinahRecord ($recName $argNames)
 
 {-@ invariant {v: Entity $recName | v == getJust (entityKey v)} @-}
 
@@ -123,9 +165,13 @@ $(it (assert recName fields) asserts "\n\n")
 
 $(entityKey recName)
 
-$(it (entityField accessors recName) fields "\n\n")
+$(it (entityField policies accessors recName) fields "\n\n")
 |]
-  where fmtField (Field name _ _) = printf "%s :: _" (accessorName recName name) :: String
+ where
+  fmtField (Field name ty _) =
+    printf "{-@ measure %s :: %s -> %s @-}" (accessorName recName name) recName ty :: String
+  argNames = unwords $ map (printf "x_%d") [0 .. length fields - 1]
+  argTys   = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
@@ -156,8 +202,8 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName "id"
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
-entityField :: [String] -> String -> Field -> Text
-entityField accessors recName (Field fieldName typ policy) = [embed|
+entityField :: [(String, Policy)] -> [String] -> String -> Field -> Text
+entityField policies accessors recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {$(fmtPolicy policy)}
   , {\row field  -> field == $accessor (entityVal row)}
@@ -174,7 +220,12 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   fmtPolicy NoPolicy = "\\row viewer -> True"
   fmtPolicy (InlinePolicy (Policy args body)) =
     printf "\\%s -> %s" (unwords args) (renderReft (insertEntityVal accessors body))
-  fmtPolicy (PolicyName policyName) = printf "\\row viewer -> %s row viewer" policyName
+  fmtPolicy (PolicyName policyName) = fmtPolicy (InlinePolicy (getPolicy policyName policies))
+
+-- TODO: handle not found gracefully
+getPolicy :: String -> [(String, Policy)] -> Policy
+getPolicy name policies = fromJust (lookup name policies)
+
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
@@ -238,3 +289,6 @@ interleave []       ys = ys
 mapHead :: (a -> a) -> [a] -> [a]
 mapHead f (x : xs) = f x : xs
 mapHead _ []       = []
+
+imap :: (Int -> a -> b) -> [a] -> [b]
+imap f = zipWith f [0 ..]
