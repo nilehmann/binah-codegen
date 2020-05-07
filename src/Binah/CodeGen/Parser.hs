@@ -31,24 +31,29 @@ inline :: Parser String
 inline = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
 
 recDecl :: Parser Decl
-recDecl = L.indentBlock scn $ do
-  name <- tycon sc
-  return
-    (L.IndentSome Nothing
-                  (return . RecDecl . uncurry (Rec name) . partitionEithers)
-                  (eitherP field assert)
-    )
+recDecl = L.lineFold scn $ \sc' -> do
+  name    <- tycon sc
+  fields  <- some (try (sc' >> field))
+  asserts <- many (try (sc' >> assert))
+  insert  <- try (sc' >> L.symbol sc "insert" >> (policyName <|> inlinePolicy)) <|> noPolicy
+  scn
+  return (RecDecl (Rec name fields asserts insert))
 
 field :: Parser Field
 field = Field <$> var sc <*> tycon sc <*> policyField
 
 policyField :: Parser FieldPolicy
-policyField = policyName <|> inlinePolicy <|> noPolicy
- where
-  symbol       = L.symbol sc
-  policyName   = PolicyName <$> (char '@' *> policyVar sc)
-  inlinePolicy = InlinePolicy <$> between (symbol "{") (symbol "}") (policy sc)
-  noPolicy     = pure NoPolicy
+policyField = policyName <|> inlinePolicy <|> noPolicy where symbol = L.symbol sc
+
+noPolicy :: Parser FieldPolicy
+noPolicy = pure NoPolicy
+
+policyName :: Parser FieldPolicy
+policyName = PolicyName <$> (char '@' *> policyVar sc)
+
+inlinePolicy :: Parser FieldPolicy
+inlinePolicy = InlinePolicy <$> between (symbol "{") (symbol "}") (policy sc)
+  where symbol = L.symbol sc
 
 assert :: Parser Assert
 assert = do

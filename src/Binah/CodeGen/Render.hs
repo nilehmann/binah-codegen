@@ -25,6 +25,8 @@ render (Binah decls inline) = [embed|
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-@ LIQUID "--compile-spec" @-}
+
 module Model 
   ( $(it id (exports records) "\n  , ")
   )
@@ -74,7 +76,7 @@ $(it (uncurry $ policyDecl accessors) policies "\n\n")
 --------------------------------------------------------------------------------
 
 {-@ data BinahRecord record < 
-    p :: record -> Bool
+    p :: Entity record -> Bool
   , insertpolicy :: Entity record -> Entity User -> Bool
   , querypolicy  :: Entity record -> Entity User -> Bool 
   >
@@ -104,7 +106,7 @@ $(fromMaybe "" inline)
   preds    = predDecls decls
   policies = policyDecls decls
   accessors =
-    concatMap (\(Rec name fields _) -> map (accessorName name . fieldName) fields) records
+    concatMap (\(Rec name fields _ _) -> map (accessorName name . fieldName) fields) records
 
 exports :: [Rec] -> [String]
 exports records =
@@ -118,13 +120,13 @@ exports records =
   recIds       = map (++ "Id") recNames
   mkFuns       = map ("mk" ++) recNames
   entityFields = concatMap
-    (\(Rec name fields _) ->
+    (\(Rec name fields _ _) ->
       entityFieldBinahName name "id" : map (entityFieldBinahName name . fieldName) fields
     )
     records
 
 persistentRecord :: Rec -> Text
-persistentRecord (Rec name fields _) = [embed|
+persistentRecord (Rec name fields _ _) = [embed|
 $name
   $(it fmtField fields "\n  ")
 |]
@@ -144,7 +146,7 @@ policyDecl accessors name (Policy args body) = [embed|
   f     = argsToUpper args . insertEntityVal accessors
 
 binahRecord :: [(String, Policy)] -> [String] -> Rec -> Text
-binahRecord policies accessors (Rec recName fields asserts) = [embed|
+binahRecord policies accessors (Rec recName fields asserts insertPolicy) = [embed|
 -- * $recName
 
 $(it fmtField fields "\n")
@@ -152,8 +154,8 @@ $(it fmtField fields "\n")
 {-@ mk$recName :: 
      $(it id argTys "\n  -> ")
   -> BinahRecord < 
-       {\row -> True}
-     , {\row viewer -> True}
+       {\row -> $(it id pred " && ")}
+     , {$(fmtPolicy accessors policies insertPolicy)}
      , {\row viewer -> True}
      > $recName
 @-}
@@ -172,6 +174,11 @@ $(it (entityField policies accessors recName) fields "\n\n")
     printf "{-@ measure %s :: %s -> %s @-}" (accessorName recName name) recName ty :: String
   argNames = unwords $ map (printf "x_%d") [0 .. length fields - 1]
   argTys   = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
+  pred     = imap
+    (\i (Field name _ _) ->
+      printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
+    )
+    fields
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
@@ -205,7 +212,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 entityField :: [(String, Policy)] -> [String] -> String -> Field -> Text
 entityField policies accessors recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {$(fmtPolicy policy)}
+    {$(fmtPolicy accessors policies policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
   > _ _
@@ -217,10 +224,14 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
-  fmtPolicy NoPolicy = "\\row viewer -> True"
-  fmtPolicy (InlinePolicy (Policy args body)) =
+
+fmtPolicy :: [String] -> [(String, Policy)] -> FieldPolicy -> String
+fmtPolicy accessors policies = f
+ where
+  f NoPolicy = "\\row viewer -> True"
+  f (InlinePolicy (Policy args body)) =
     printf "\\%s -> %s" (unwords args) (renderReft (insertEntityVal accessors body))
-  fmtPolicy (PolicyName policyName) = fmtPolicy (InlinePolicy (getPolicy policyName policies))
+  f (PolicyName policyName) = f (InlinePolicy (getPolicy policyName policies))
 
 -- TODO: handle not found gracefully
 getPolicy :: String -> [(String, Policy)] -> Policy

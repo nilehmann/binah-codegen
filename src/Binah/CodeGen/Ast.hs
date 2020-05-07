@@ -39,6 +39,7 @@ data Rec = Rec
   { recName    :: String
   , recFields  :: [Field]
   , recAsserts :: [Assert]
+  , recInsertPolicy :: FieldPolicy
   }
   deriving Show
 
