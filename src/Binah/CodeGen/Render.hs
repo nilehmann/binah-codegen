@@ -155,8 +155,8 @@ $(it fmtField fields "\n")
      $(it id argTys "\n  -> ")
   -> BinahRecord < 
        {\row -> $(it id pred " && ")}
-     , {$(fmtPolicy accessors policies insertPolicy)}
-     , {\row viewer -> True}
+     , {$(fmtFieldPolicy accessors policies insertPolicy)}
+     , {$(fmtPolicy accessors disjPolicy)}
      > $recName
 @-}
 mk$recName $argNames = BinahRecord ($recName $argNames)
@@ -179,6 +179,10 @@ $(it (entityField policies accessors recName) fields "\n\n")
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
     )
     fields
+  -- TODO: simple optimization: filter fields with the same `PolicyName`
+  fieldPolicies = mapMaybe (getPolicy policies . fieldPolicy) fields
+  policyBodies  = map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
+  disjPolicy    = Policy ["row", "viewer"] (disjunction policyBodies)
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
@@ -212,7 +216,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 entityField :: [(String, Policy)] -> [String] -> String -> Field -> Text
 entityField policies accessors recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {$(fmtPolicy accessors policies policy)}
+    {$(fmtFieldPolicy accessors policies policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
   > _ _
@@ -225,17 +229,22 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
 
-fmtPolicy :: [String] -> [(String, Policy)] -> FieldPolicy -> String
-fmtPolicy accessors policies = f
+fmtPolicy :: [String] -> Policy -> String
+fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
+  where renderedBody = renderReft (insertEntityVal accessors body)
+
+fmtFieldPolicy :: [String] -> [(String, Policy)] -> FieldPolicy -> String
+fmtFieldPolicy accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
  where
-  f NoPolicy = "\\row viewer -> True"
-  f (InlinePolicy (Policy args body)) =
-    printf "\\%s -> %s" (unwords args) (renderReft (insertEntityVal accessors body))
-  f (PolicyName policyName) = f (InlinePolicy (getPolicy policyName policies))
+  Policy args body = fromMaybe policyTrue (getPolicy policies fieldPolicy)
+  renderedBody     = renderReft (insertEntityVal accessors body)
+
 
 -- TODO: handle not found gracefully
-getPolicy :: String -> [(String, Policy)] -> Policy
-getPolicy name policies = fromJust (lookup name policies)
+getPolicy :: [(String, Policy)] -> FieldPolicy -> Maybe Policy
+getPolicy _        NoPolicy              = Nothing
+getPolicy policies (PolicyName   name  ) = Just $ fromJust (lookup name policies)
+getPolicy _        (InlinePolicy policy) = Just policy
 
 
 accessorName :: String -> String -> String
@@ -303,3 +312,14 @@ mapHead _ []       = []
 
 imap :: (Int -> a -> b) -> [a] -> [b]
 imap f = zipWith f [0 ..]
+
+
+normalizeBody :: String -> String -> Reft -> Reft
+normalizeBody row viewer = f
+ where
+  f (ROps refts ops) = ROps (map f refts) ops
+  f (RApp   refts  ) = RApp (map f refts)
+  f (RParen reft   ) = RParen (f reft)
+  f (RConst s) | s == row    = RConst "row"
+               | s == viewer = RConst "viewer"
+               | otherwise   = RConst s

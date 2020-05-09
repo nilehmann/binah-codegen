@@ -55,12 +55,15 @@ data Policy = Policy
   }
   deriving Show
 
+policyTrue = Policy ["_", "_"] (RConst "True")
+
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
   , fieldPolicy :: FieldPolicy
   } deriving Show
 
+-- TODO: find a better name for this
 data FieldPolicy = InlinePolicy Policy | PolicyName String | NoPolicy deriving Show
 
 data Reft
@@ -71,3 +74,7 @@ data Reft
   deriving Show
 
 newtype Assert = Assert Reft deriving Show
+
+disjunction :: [Reft] -> Reft
+disjunction []    = RConst "False"
+disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "&&")
