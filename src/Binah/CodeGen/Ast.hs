@@ -39,7 +39,7 @@ data Rec = Rec
   { recName    :: String
   , recFields  :: [Field]
   , recAsserts :: [Assert]
-  , recInsertPolicy :: FieldPolicy
+  , recInsertPolicy :: PolicyAttr
   }
   deriving Show
 
@@ -55,16 +55,24 @@ data Policy = Policy
   }
   deriving Show
 
+policyTrue :: Policy
 policyTrue = Policy ["_", "_"] (RConst "True")
 
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
-  , fieldPolicy :: FieldPolicy
+  , fieldPolicy :: PolicyAttr
   } deriving Show
 
--- TODO: find a better name for this
-data FieldPolicy = InlinePolicy Policy | PolicyName String | NoPolicy deriving Show
+data PolicyAttr = InlinePolicy Policy | PolicyRef String | NoPolicy deriving Show
+
+policyRef :: PolicyAttr -> Maybe String
+policyRef (PolicyRef name) = Just name
+policyRef _                = Nothing
+
+inlinePolicy :: PolicyAttr -> Maybe Policy
+inlinePolicy (InlinePolicy policy) = Just policy
+inlinePolicy _                     = Nothing
 
 data Reft
   = ROps [Reft] [String]
@@ -77,4 +85,4 @@ newtype Assert = Assert Reft deriving Show
 
 disjunction :: [Reft] -> Reft
 disjunction []    = RConst "False"
-disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "&&")
+disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "||")

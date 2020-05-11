@@ -21,48 +21,21 @@ import           Binah.CodeGen.Ast
 type Parser = Parsec Void Text
 
 parse :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Binah
-parse = runParser (binah <* eof)
+parse = runParser (binahP <* eof)
 
-binah :: Parser Binah
-binah =
-  L.nonIndented scn (Binah <$> many (predDecl <|> recDecl <|> policyDecl) <*> optional inline)
+binahP :: Parser Binah
+binahP =
+  L.nonIndented scn (Binah <$> many (predDeclP <|> recDeclP <|> policyDeclP) <*> optional inlineP)
 
-inline :: Parser String
-inline = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
+inlineP :: Parser String
+inlineP = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
 
-recDecl :: Parser Decl
-recDecl = L.lineFold scn $ \sc' -> do
-  name    <- tycon sc
-  fields  <- some (try (sc' >> field))
-  asserts <- many (try (sc' >> assert))
-  insert  <- try (sc' >> L.symbol sc "insert" >> (policyName <|> inlinePolicy)) <|> noPolicy
-  scn
-  return (RecDecl (Rec name fields asserts insert))
+--------------------------------------------------------------------------------
+-- | Predicate Decl
+--------------------------------------------------------------------------------
 
-field :: Parser Field
-field = Field <$> var sc <*> tycon sc <*> policyField
-
-policyField :: Parser FieldPolicy
-policyField = policyName <|> inlinePolicy <|> noPolicy where symbol = L.symbol sc
-
-noPolicy :: Parser FieldPolicy
-noPolicy = pure NoPolicy
-
-policyName :: Parser FieldPolicy
-policyName = PolicyName <$> (char '@' *> policyVar sc)
-
-inlinePolicy :: Parser FieldPolicy
-inlinePolicy = InlinePolicy <$> between (symbol "{") (symbol "}") (policy sc)
-  where symbol = L.symbol sc
-
-assert :: Parser Assert
-assert = do
-  symbol "assert"
-  Assert <$> between (symbol "[") (symbol "]") (reft sc)
-  where symbol = L.symbol sc
-
-predDecl :: Parser Decl
-predDecl = L.lineFold scn $ \sc' -> do
+predDeclP :: Parser Decl
+predDeclP = L.lineFold scn $ \sc' -> do
   let symbol = L.symbol sc'
   symbol "predicate"
   name <- var sc'
@@ -71,28 +44,77 @@ predDecl = L.lineFold scn $ \sc' -> do
   scn
   return . PredDecl $ Pred name argtys
 
-policyDecl :: Parser Decl
-policyDecl = L.lineFold scn $ \sc' -> do
+--------------------------------------------------------------------------------
+-- | Policy Decl
+--------------------------------------------------------------------------------
+
+policyDeclP :: Parser Decl
+policyDeclP = L.lineFold scn $ \sc' -> do
   let symbol = L.symbol sc'
   symbol "policy"
   name <- policyVar sc'
   symbol "="
-  p <- policy sc'
+  p <- policyP sc'
   scn
-  return (PolicyDecl name p)
+  return $ PolicyDecl name p
 
-policy :: Parser () -> Parser Policy
-policy sc' = do
+--------------------------------------------------------------------------------
+-- | Record Decl
+--------------------------------------------------------------------------------
+
+recDeclP :: Parser Decl
+recDeclP = L.lineFold scn $ \sc' -> do
+  name    <- tycon sc                              -- Record
+  fields  <- some (try (sc' >> fieldP))            --   (field ...)+
+  asserts <- many (try (sc' >> assertP))           --   (assert ...)*
+  insert  <- try (sc' >> insertP) <|> noPolicyP    --   (insert ...)?
+  scn
+  return $ RecDecl (Rec name fields asserts insert)
+
+fieldP :: Parser Field
+fieldP = Field <$> var sc <*> tycon sc <*> fieldPolicyP
+
+fieldPolicyP :: Parser PolicyAttr
+fieldPolicyP = policyRefP <|> inlinePolicyP <|> noPolicyP
+
+assertP :: Parser Assert
+assertP = do
+  symbol "assert"
+  Assert <$> between (symbol "[") (symbol "]") (reft scn)
+  where symbol = L.symbol sc
+
+insertP :: Parser PolicyAttr
+insertP = L.symbol sc "insert" >> (policyRefP <|> inlinePolicyP)
+
+--------------------------------------------------------------------------------
+-- | Policies
+--------------------------------------------------------------------------------
+
+noPolicyP :: Parser PolicyAttr
+noPolicyP = pure NoPolicy
+
+policyRefP :: Parser PolicyAttr
+policyRefP = PolicyRef <$> (char '@' *> policyVar sc)
+
+inlinePolicyP :: Parser PolicyAttr
+inlinePolicyP = InlinePolicy <$> between (symbol "{") (symbol "}") (policyP scn)
+  where symbol = L.symbol sc
+
+policyP :: Parser () -> Parser Policy
+policyP sc' = do
   let symbol = L.symbol sc'
   symbol "\\"
   args <- someTill (var sc') $ arrow sc'
   body <- reft (try sc' <|> sc)
   scn
-  return (Policy args body)
+  return $ Policy args body
 
 --------------------------------------------------------------------------------
 -- | Refinements
 --------------------------------------------------------------------------------
+
+-- We do a very basic parsing of refinements which is enough to insert entityVal 
+-- when needed.
 
 ascSymbols :: String
 ascSymbols = "!#$%&⋆+./<=>?@\\^|-~:"
@@ -119,7 +141,7 @@ reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symb
 
 -- TODO: We should put other reserved words here as well
 reserved :: Parser Text
-reserved = string "assert" <|> string "deriving"
+reserved = string "assert" <|> string "deriving" <|> "insert"
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')

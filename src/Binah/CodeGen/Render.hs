@@ -10,6 +10,7 @@ import           Data.Char
 import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
+import           Data.List                      ( nub )
 import           Text.QuasiText
 import           Text.Printf
 
@@ -155,7 +156,7 @@ $(it fmtField fields "\n")
      $(it id argTys "\n  -> ")
   -> BinahRecord < 
        {\row -> $(it id pred " && ")}
-     , {$(fmtFieldPolicy accessors policies insertPolicy)}
+     , {$(fmtPolicyAttr accessors policies insertPolicy)}
      , {$(fmtPolicy accessors disjPolicy)}
      > $recName
 @-}
@@ -179,10 +180,12 @@ $(it (entityField policies accessors recName) fields "\n\n")
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
     )
     fields
-  -- TODO: simple optimization: filter fields with the same `PolicyName`
-  fieldPolicies = mapMaybe (getPolicy policies . fieldPolicy) fields
-  policyBodies  = map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
-  disjPolicy    = Policy ["row", "viewer"] (disjunction policyBodies)
+  inlinePolicies = mapMaybe (inlinePolicy . fieldPolicy) fields
+  policyRefs     = map getPolicy . nub $ mapMaybe (policyRef . fieldPolicy) fields
+  fieldPolicies  = inlinePolicies ++ policyRefs
+  getPolicy      = fromJust . flip lookup policies
+  policyBodies   = map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
+  disjPolicy     = Policy ["row", "viewer"] (disjunction policyBodies)
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
@@ -216,7 +219,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 entityField :: [(String, Policy)] -> [String] -> String -> Field -> Text
 entityField policies accessors recName (Field fieldName typ policy) = [embed|
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {$(fmtFieldPolicy accessors policies policy)}
+    {$(fmtPolicyAttr accessors policies policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
   > _ _
@@ -233,18 +236,14 @@ fmtPolicy :: [String] -> Policy -> String
 fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
   where renderedBody = renderReft (insertEntityVal accessors body)
 
-fmtFieldPolicy :: [String] -> [(String, Policy)] -> FieldPolicy -> String
-fmtFieldPolicy accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
+fmtPolicyAttr :: [String] -> [(String, Policy)] -> PolicyAttr -> String
+fmtPolicyAttr accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
  where
-  Policy args body = fromMaybe policyTrue (getPolicy policies fieldPolicy)
+  Policy args body = fromMaybe policyTrue (extractPolicy policies fieldPolicy)
   renderedBody     = renderReft (insertEntityVal accessors body)
-
-
--- TODO: handle not found gracefully
-getPolicy :: [(String, Policy)] -> FieldPolicy -> Maybe Policy
-getPolicy _        NoPolicy              = Nothing
-getPolicy policies (PolicyName   name  ) = Just $ fromJust (lookup name policies)
-getPolicy _        (InlinePolicy policy) = Just policy
+  extractPolicy _        NoPolicy              = Nothing
+  extractPolicy policies (PolicyRef    name  ) = Just $ fromJust (lookup name policies)
+  extractPolicy _        (InlinePolicy policy) = Just policy
 
 
 accessorName :: String -> String -> String
