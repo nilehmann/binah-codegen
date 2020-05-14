@@ -63,36 +63,35 @@ policyDeclP = L.lineFold scn $ \sc' -> do
 --------------------------------------------------------------------------------
 
 recDeclP :: Parser Decl
-recDeclP = L.lineFold scn $ \sc' -> do
-  name    <- tycon sc
-  fields  <- some (try (sc' >> fieldP))
-  asserts <- many (try (sc' >> assertP))
-  insert  <- optional (try (sc' >> insertPolicyP))
-  update  <- many (try (sc' >> updatePolicyP))
-  scn
-  return $ RecDecl (Rec name fields asserts insert update)
+recDeclP = L.indentBlock scn $ do
+  name <- tycon sc
+  return (L.IndentMany Nothing (return . RecDecl . Rec name) recItemP)
 
-fieldP :: Parser Field
-fieldP = Field <$> var sc <*> tycon sc <*> optional fieldPolicyP
+recItemP :: Parser RecItem
+recItemP = fieldP <|> assertP <|> insertPolicyP <|> updatePolicyP
 
-fieldPolicyP :: Parser PolicyAttr
-fieldPolicyP = policyRefP <|> inlinePolicyP
+fieldP :: Parser RecItem
+fieldP = do
+  name   <- var sc
+  typ    <- tycon sc
+  policy <- optional policyAttrP
+  return . FieldItem $ Field name typ policy
 
-assertP :: Parser Assert
+assertP :: Parser RecItem
 assertP = do
   symbol "assert"
-  Assert <$> between (symbol "[") (symbol "]") (reft scn)
+  AssertItem . Assert <$> between (symbol "[") (symbol "]") (reft scn)
   where symbol = L.symbol sc
 
-insertPolicyP :: Parser PolicyAttr
-insertPolicyP = L.symbol sc "insert" >> (policyRefP <|> inlinePolicyP)
+insertPolicyP :: Parser RecItem
+insertPolicyP = L.symbol sc "insert" >> (InsertItem <$> policyAttrP)
 
-updatePolicyP :: Parser UpdatePolicy
+updatePolicyP :: Parser RecItem
 updatePolicyP = do
   L.symbol sc "update"
   fields <- fieldPatternP
   policy <- policyRefP <|> inlinePolicyP
-  return $ UpdatePolicy fields policy
+  return . UpdateItem $ UpdatePolicy fields policy
 
 -- TODO: Implement wildcard
 fieldPatternP :: Parser [String]
@@ -105,6 +104,9 @@ fieldListP = between (symbol "[") (symbol "]") (var scn `sepBy` symbol ",")
 --------------------------------------------------------------------------------
 -- | Policies
 --------------------------------------------------------------------------------
+
+policyAttrP :: Parser PolicyAttr
+policyAttrP = policyRefP <|> inlinePolicyP
 
 policyRefP :: Parser PolicyAttr
 policyRefP = PolicyRef <$> (char '@' *> policyVar sc)

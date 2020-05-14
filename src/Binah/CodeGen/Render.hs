@@ -18,6 +18,9 @@ import           Text.Printf
 import           Binah.CodeGen.Ast
 import           Control.Monad                  ( (<=<) )
 
+
+import           Binah.CodeGen.Helpers
+
 render :: Binah -> Text
 render (Binah decls inline) = [embed|
 {-# LANGUAGE GADTs #-}
@@ -113,7 +116,7 @@ $(fromMaybe "" inline)
   preds    = predDecls decls
   policies = policyDecls decls
   accessors =
-    concatMap (\(Rec name fields _ _ _) -> map (accessorName name . fieldName) fields) records
+    concatMap (\(Rec name items) -> mapFields (accessorName name . fieldName) items) records
 
 exports :: [Rec] -> [String]
 exports records =
@@ -127,17 +130,19 @@ exports records =
   recIds       = map (++ "Id") recNames
   mkFuns       = map ("mk" ++) recNames
   entityFields = concatMap
-    (\(Rec name fields _ _ _) ->
-      entityFieldBinahName name "id" : map (entityFieldBinahName name . fieldName) fields
+    (\(Rec name items) ->
+      entityFieldBinahName name "id" : mapFields (entityFieldBinahName name . fieldName) items
     )
     records
 
 persistentRecord :: Rec -> Text
-persistentRecord (Rec name fields _ _ _) = [embed|
+persistentRecord (Rec name items) = [embed|
 $name
   $(it fmtField fields "\n  ")
 |]
-  where fmtField (Field name typ _) = printf "%s %s" name typ :: String
+ where
+  fmtField (Field name typ _) = printf "%s %s" name typ :: String
+  fields = filterFields items
 
 predicateDecl :: Pred -> Text
 predicateDecl (Pred name argtys) = [embed|
@@ -153,7 +158,7 @@ policyDecl accessors name (Policy args body) = [embed|
   f     = argsToUpper args . insertEntityVal accessors
 
 binahRecord :: [(String, Policy)] -> [String] -> Rec -> Text
-binahRecord policies accessors record@(Rec recName fields asserts insertPolicy _) = [embed|
+binahRecord policies accessors record@(Rec recName items) = [embed|
 -- * $recName
 
 $(it fmtField fields "\n")
@@ -177,6 +182,9 @@ $(entityKey recName)
 $(it (entityField policies accessors record) fields "\n\n")
 |]
  where
+  fields       = filterFields items
+  insertPolicy = lookupInsertPolicy items
+  asserts      = filterAsserts items
   fmtField (Field name ty _) =
     printf "{-@ measure %s :: %s -> %s @-}" (accessorName recName name) recName ty :: String
   argNames = unwords $ map (printf "x_%d") [0 .. length fields - 1]
@@ -224,8 +232,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityField :: [(String, Policy)] -> [String] -> Rec -> Field -> Text
-entityField policies accessors (Rec recName _ _ _ updatePolicies) (Field fieldName typ policy) =
-  [embed|
+entityField policies accessors (Rec recName items) (Field fieldName typ policy) = [embed|
 {-@ measure $entityFieldCapability :: Entity $recName -> Bool @-}
 
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
@@ -244,6 +251,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
   entityFieldCapability = entityFieldCapabilityName recName fieldName
+  updatePolicies        = filterUpdates items
   updatePolicy          = findUpdatePolicy policies updatePolicies fieldName entityFieldCapability
 
 fmtPolicy :: [String] -> Policy -> String
@@ -344,11 +352,6 @@ findUpdatePolicy policies updatePolicies fieldName capability = policy
     if fieldName `elem` fields then Just (extractPolicy policies policyAttr) else Nothing
   Policy args body = fromMaybe policyTrue3 (safeHead . mapMaybe f $ updatePolicies)
   policy           = Policy args (implies body (RApp [RConst capability, RConst (head args)]))
-
-
-safeHead :: [a] -> Maybe a
-safeHead []       = Nothing
-safeHead (x : xs) = Just x
 
 
 extractPolicy :: [(String, Policy)] -> PolicyAttr -> Policy

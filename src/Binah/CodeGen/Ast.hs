@@ -4,11 +4,23 @@ import           Data.Typeable
 import           Data.Data
 import           Data.Maybe
 
+import           Binah.CodeGen.Helpers
 
 data Binah = Binah
   { binahDecls  :: [Decl]
   , binahInline :: Maybe String
   }
+  deriving Show
+
+----------------------------------------------------------------------------------------------------
+-- | Top level declarations
+----------------------------------------------------------------------------------------------------
+
+data Decl
+  = RecDecl Rec
+  | PredDecl Pred
+
+  | PolicyDecl String Policy
   deriving Show
 
 recordDecls :: [Decl] -> [Rec]
@@ -29,28 +41,92 @@ policyDecls = mapMaybe f
   f (PolicyDecl name pred) = Just (name, pred)
   f _                      = Nothing
 
-data Decl
-  = RecDecl Rec
-  | PredDecl Pred
-  | PolicyDecl String Policy
-  deriving Show
-
-data Rec = Rec
-  { recName    :: String
-  , recFields  :: [Field]
-  , recAsserts :: [Assert]
-  , recInsertPolicy :: Maybe PolicyAttr
-  , recUpdatePolicies :: [UpdatePolicy]
-  }
-  deriving Show
-
-data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
+----------------------------------------------------------------------------------------------------
+-- | Predicates
+----------------------------------------------------------------------------------------------------
 
 data Pred = Pred
   { predName   :: String
   , predArgtys :: [String]
   }
   deriving Show
+
+----------------------------------------------------------------------------------------------------
+-- | Records
+----------------------------------------------------------------------------------------------------
+
+data Rec = Rec
+  { recName    :: String
+  , recItems   :: [RecItem]
+  }
+  deriving Show
+
+data RecItem
+  = FieldItem Field
+  | AssertItem Assert
+  | InsertItem PolicyAttr
+  | UpdateItem UpdatePolicy
+  deriving Show
+
+fieldItem :: RecItem -> Maybe Field
+fieldItem (FieldItem item) = Just item
+fieldItem _                = Nothing
+
+mapFields :: (Field -> a) -> [RecItem] -> [a]
+mapFields f = mapMaybe (fmap f . fieldItem)
+
+filterFields :: [RecItem] -> [Field]
+filterFields = mapFields id
+
+updateItem :: RecItem -> Maybe UpdatePolicy
+updateItem (UpdateItem item) = Just item
+updateItem _                 = Nothing
+
+mapUpdates :: (UpdatePolicy -> a) -> [RecItem] -> [a]
+mapUpdates f = mapMaybe (fmap f . updateItem)
+
+filterUpdates :: [RecItem] -> [UpdatePolicy]
+filterUpdates = mapUpdates id
+
+insertItem :: RecItem -> Maybe PolicyAttr
+insertItem (InsertItem item) = Just item
+insertItem _                 = Nothing
+
+lookupInsertPolicy :: [RecItem] -> Maybe PolicyAttr
+lookupInsertPolicy = safeHead . mapMaybe insertItem
+
+assertItem :: RecItem -> Maybe Assert
+assertItem (AssertItem item) = Just item
+assertItem _                 = Nothing
+
+mapAsserts :: (Assert -> a) -> [RecItem] -> [a]
+mapAsserts f = mapMaybe (fmap f . assertItem)
+
+filterAsserts :: [RecItem] -> [Assert]
+filterAsserts = mapAsserts id
+
+
+data Field = Field
+  { fieldName   :: String
+  , fieldTyp    :: String
+  , fieldPolicy :: Maybe PolicyAttr
+  } deriving Show
+
+data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
+
+data PolicyAttr = InlinePolicy Policy | PolicyRef String deriving Show
+
+policyRef :: PolicyAttr -> Maybe String
+policyRef (PolicyRef name) = Just name
+policyRef _                = Nothing
+
+inlinePolicy :: PolicyAttr -> Maybe Policy
+inlinePolicy (InlinePolicy policy) = Just policy
+inlinePolicy _                     = Nothing
+
+----------------------------------------------------------------------------------------------------
+-- | Policies
+----------------------------------------------------------------------------------------------------
 
 data Policy = Policy
   { policyArgs :: [String]
@@ -64,21 +140,10 @@ policyTrue2 = Policy ["x", "y"] (RConst "True")
 policyTrue3 :: Policy
 policyTrue3 = Policy ["x", "y", "z"] (RConst "True")
 
-data Field = Field
-  { fieldName   :: String
-  , fieldTyp    :: String
-  , fieldPolicy :: Maybe PolicyAttr
-  } deriving Show
 
-data PolicyAttr = InlinePolicy Policy | PolicyRef String deriving Show
-
-policyRef :: PolicyAttr -> Maybe String
-policyRef (PolicyRef name) = Just name
-policyRef _                = Nothing
-
-inlinePolicy :: PolicyAttr -> Maybe Policy
-inlinePolicy (InlinePolicy policy) = Just policy
-inlinePolicy _                     = Nothing
+----------------------------------------------------------------------------------------------------
+-- | Refinements
+----------------------------------------------------------------------------------------------------
 
 data Reft
   = ROps [Reft] [String]
