@@ -40,8 +40,11 @@ data Rec = Rec
   , recFields  :: [Field]
   , recAsserts :: [Assert]
   , recInsertPolicy :: PolicyAttr
+  , recUpdatePolicies :: [UpdatePolicy]
   }
   deriving Show
+
+data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
 
 data Pred = Pred
   { predName   :: String
@@ -55,8 +58,11 @@ data Policy = Policy
   }
   deriving Show
 
-policyTrue :: Policy
-policyTrue = Policy ["_", "_"] (RConst "True")
+policyTrue2 :: Policy
+policyTrue2 = Policy ["x", "y"] (RConst "True")
+
+policyTrue3 :: Policy
+policyTrue3 = Policy ["x", "y", "z"] (RConst "True")
 
 data Field = Field
   { fieldName   :: String
@@ -86,3 +92,6 @@ newtype Assert = Assert Reft deriving Show
 disjunction :: [Reft] -> Reft
 disjunction []    = RConst "False"
 disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "||")
+
+implies :: Reft -> Reft -> Reft
+implies p1 p2 = ROps [RParen p1, RParen p2] ["=>"]

@@ -64,12 +64,13 @@ policyDeclP = L.lineFold scn $ \sc' -> do
 
 recDeclP :: Parser Decl
 recDeclP = L.lineFold scn $ \sc' -> do
-  name    <- tycon sc                              -- Record
-  fields  <- some (try (sc' >> fieldP))            --   (field ...)+
-  asserts <- many (try (sc' >> assertP))           --   (assert ...)*
-  insert  <- try (sc' >> insertP) <|> noPolicyP    --   (insert ...)?
+  name    <- tycon sc                                  -- Record
+  fields  <- some (try (sc' >> fieldP))                --   (field ...)+
+  asserts <- many (try (sc' >> assertP))               --   (assert ...)*
+  insert  <- try (sc' >> insertPolicyP) <|> noPolicyP  --   (insert ...)?
+  update  <- many (try (sc' >> updatePolicyP))
   scn
-  return $ RecDecl (Rec name fields asserts insert)
+  return $ RecDecl (Rec name fields asserts insert update)
 
 fieldP :: Parser Field
 fieldP = Field <$> var sc <*> tycon sc <*> fieldPolicyP
@@ -83,8 +84,23 @@ assertP = do
   Assert <$> between (symbol "[") (symbol "]") (reft scn)
   where symbol = L.symbol sc
 
-insertP :: Parser PolicyAttr
-insertP = L.symbol sc "insert" >> (policyRefP <|> inlinePolicyP)
+insertPolicyP :: Parser PolicyAttr
+insertPolicyP = L.symbol sc "insert" >> (policyRefP <|> inlinePolicyP)
+
+updatePolicyP :: Parser UpdatePolicy
+updatePolicyP = do
+  L.symbol sc "update"
+  fields <- fieldPatternP
+  policy <- policyRefP <|> inlinePolicyP
+  return $ UpdatePolicy fields policy
+
+-- TODO: Implement wildcard
+fieldPatternP :: Parser [String]
+fieldPatternP = fieldListP <|> pure <$> var sc
+
+fieldListP :: Parser [String]
+fieldListP = between (symbol "[") (symbol "]") (var scn `sepBy` symbol ",")
+  where symbol = L.symbol scn
 
 --------------------------------------------------------------------------------
 -- | Policies
@@ -141,7 +157,7 @@ reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symb
 
 -- TODO: We should put other reserved words here as well
 reserved :: Parser Text
-reserved = string "assert" <|> string "deriving" <|> "insert"
+reserved = "assert" <|> "deriving" <|> "insert" <|> "update"
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')

@@ -11,6 +11,7 @@ import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.List                      ( nub )
+import           Data.Function                  ( (&) )
 import           Text.QuasiText
 import           Text.Printf
 
@@ -51,14 +52,18 @@ $(it persistentRecord records "\n\n")
 $qqEnd
 
 {-@
-data EntityFieldWrapper record typ < policy :: Entity record -> Entity User -> Bool
+data EntityFieldWrapper record typ < querypolicy :: Entity record -> Entity User -> Bool
                                    , selector :: Entity record -> typ -> Bool
                                    , flippedselector :: typ -> Entity record -> Bool
+                                   , capability :: Entity record -> Bool
+                                   , updatepolicy :: Entity record -> Entity record -> Entity User -> Bool
                                    > = EntityFieldWrapper _
 @-}
 
 data EntityFieldWrapper record typ = EntityFieldWrapper (Persist.EntityField record typ)
-{-@ data variance EntityFieldWrapper covariant covariant invariant invariant invariant @-}
+{-@ data variance EntityFieldWrapper covariant covariant invariant invariant invariant invariant invariant @-}
+
+{-@ measure currentUser :: Entity User @-}
 
 --------------------------------------------------------------------------------
 -- | Predicates
@@ -107,7 +112,7 @@ $(fromMaybe "" inline)
   preds    = predDecls decls
   policies = policyDecls decls
   accessors =
-    concatMap (\(Rec name fields _ _) -> map (accessorName name . fieldName) fields) records
+    concatMap (\(Rec name fields _ _ _) -> map (accessorName name . fieldName) fields) records
 
 exports :: [Rec] -> [String]
 exports records =
@@ -121,13 +126,13 @@ exports records =
   recIds       = map (++ "Id") recNames
   mkFuns       = map ("mk" ++) recNames
   entityFields = concatMap
-    (\(Rec name fields _ _) ->
+    (\(Rec name fields _ _ _) ->
       entityFieldBinahName name "id" : map (entityFieldBinahName name . fieldName) fields
     )
     records
 
 persistentRecord :: Rec -> Text
-persistentRecord (Rec name fields _ _) = [embed|
+persistentRecord (Rec name fields _ _ _) = [embed|
 $name
   $(it fmtField fields "\n  ")
 |]
@@ -147,7 +152,7 @@ policyDecl accessors name (Policy args body) = [embed|
   f     = argsToUpper args . insertEntityVal accessors
 
 binahRecord :: [(String, Policy)] -> [String] -> Rec -> Text
-binahRecord policies accessors (Rec recName fields asserts insertPolicy) = [embed|
+binahRecord policies accessors record@(Rec recName fields asserts insertPolicy _) = [embed|
 -- * $recName
 
 $(it fmtField fields "\n")
@@ -168,7 +173,7 @@ $(it (assert recName fields) asserts "\n\n")
 
 $(entityKey recName)
 
-$(it (entityField policies accessors recName) fields "\n\n")
+$(it (entityField policies accessors record) fields "\n\n")
 |]
  where
   fmtField (Field name ty _) =
@@ -207,6 +212,8 @@ entityKey recName = [embed|
     {\row viewer -> True}
   , {\row field  -> field == entityKey row}
   , {\field row  -> field == entityKey row}
+  , {\_ -> False}
+  , {\_ _ _ -> True}
   > _ _
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $entityFieldPersistent
@@ -216,12 +223,17 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName "id"
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
-entityField :: [(String, Policy)] -> [String] -> String -> Field -> Text
-entityField policies accessors recName (Field fieldName typ policy) = [embed|
+entityField :: [(String, Policy)] -> [String] -> Rec -> Field -> Text
+entityField policies accessors (Rec recName _ _ _ updatePolicies) (Field fieldName typ policy) =
+  [embed|
+{-@ measure $entityFieldCapability :: Entity $recName -> Bool @-}
+
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {$(fmtPolicyAttr accessors policies policy)}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
+  , {\old -> $entityFieldCapability old}
+  , {$(fmtPolicy accessors updatePolicy)}
   > _ _
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $typ
@@ -231,6 +243,8 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
+  entityFieldCapability = entityFieldCapabilityName recName fieldName
+  updatePolicy          = findUpdatePolicy policies updatePolicies fieldName entityFieldCapability
 
 fmtPolicy :: [String] -> Policy -> String
 fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
@@ -239,7 +253,7 @@ fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) rend
 fmtPolicyAttr :: [String] -> [(String, Policy)] -> PolicyAttr -> String
 fmtPolicyAttr accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
  where
-  Policy args body = fromMaybe policyTrue (extractPolicy policies fieldPolicy)
+  Policy args body = fromMaybe policyTrue2 (extractPolicy policies fieldPolicy)
   renderedBody     = renderReft (insertEntityVal accessors body)
   extractPolicy _        NoPolicy              = Nothing
   extractPolicy policies (PolicyRef    name  ) = Just $ fromJust (lookup name policies)
@@ -254,6 +268,9 @@ entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
 
 entityFieldPersistentName :: String -> String -> String
 entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName
+
+entityFieldCapabilityName :: String -> String -> String
+entityFieldCapabilityName recName fieldName = accessorName recName fieldName ++ "Cap"
 
 --------------------------------------------------------------------------------
 -- | Refinements
@@ -322,3 +339,21 @@ normalizeBody row viewer = f
   f (RConst s) | s == row    = RConst "row"
                | s == viewer = RConst "viewer"
                | otherwise   = RConst s
+
+
+findUpdatePolicy :: [(String, Policy)] -> [UpdatePolicy] -> String -> String -> Policy
+findUpdatePolicy policies updatePolicies fieldName capability = policy
+ where
+  f (UpdatePolicy fields policyAttr) =
+    if fieldName `elem` fields then Just (getPolicy policyAttr) else Nothing
+  getPolicy (InlinePolicy policy) = policy
+  getPolicy (PolicyRef    name  ) = fromJust $ lookup name policies
+  getPolicy NoPolicy              = policyTrue3
+  Policy args body = fromMaybe policyTrue3 (safeHead . mapMaybe f $ updatePolicies)
+  policy           = Policy args (implies body (RApp [RConst capability, RConst (head args)]))
+
+
+safeHead :: [a] -> Maybe a
+safeHead []       = Nothing
+safeHead (x : xs) = Just x
+
