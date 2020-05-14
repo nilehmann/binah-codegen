@@ -39,7 +39,7 @@ data Rec = Rec
   { recName    :: String
   , recFields  :: [Field]
   , recAsserts :: [Assert]
-  , recInsertPolicy :: PolicyAttr
+  , recInsertPolicy :: Maybe PolicyAttr
   , recUpdatePolicies :: [UpdatePolicy]
   }
   deriving Show
@@ -67,10 +67,10 @@ policyTrue3 = Policy ["x", "y", "z"] (RConst "True")
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
-  , fieldPolicy :: PolicyAttr
+  , fieldPolicy :: Maybe PolicyAttr
   } deriving Show
 
-data PolicyAttr = InlinePolicy Policy | PolicyRef String | NoPolicy deriving Show
+data PolicyAttr = InlinePolicy Policy | PolicyRef String deriving Show
 
 policyRef :: PolicyAttr -> Maybe String
 policyRef (PolicyRef name) = Just name

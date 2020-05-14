@@ -64,19 +64,19 @@ policyDeclP = L.lineFold scn $ \sc' -> do
 
 recDeclP :: Parser Decl
 recDeclP = L.lineFold scn $ \sc' -> do
-  name    <- tycon sc                                  -- Record
-  fields  <- some (try (sc' >> fieldP))                --   (field ...)+
-  asserts <- many (try (sc' >> assertP))               --   (assert ...)*
-  insert  <- try (sc' >> insertPolicyP) <|> noPolicyP  --   (insert ...)?
+  name    <- tycon sc
+  fields  <- some (try (sc' >> fieldP))
+  asserts <- many (try (sc' >> assertP))
+  insert  <- optional (try (sc' >> insertPolicyP))
   update  <- many (try (sc' >> updatePolicyP))
   scn
   return $ RecDecl (Rec name fields asserts insert update)
 
 fieldP :: Parser Field
-fieldP = Field <$> var sc <*> tycon sc <*> fieldPolicyP
+fieldP = Field <$> var sc <*> tycon sc <*> optional fieldPolicyP
 
 fieldPolicyP :: Parser PolicyAttr
-fieldPolicyP = policyRefP <|> inlinePolicyP <|> noPolicyP
+fieldPolicyP = policyRefP <|> inlinePolicyP
 
 assertP :: Parser Assert
 assertP = do
@@ -105,9 +105,6 @@ fieldListP = between (symbol "[") (symbol "]") (var scn `sepBy` symbol ",")
 --------------------------------------------------------------------------------
 -- | Policies
 --------------------------------------------------------------------------------
-
-noPolicyP :: Parser PolicyAttr
-noPolicyP = pure NoPolicy
 
 policyRefP :: Parser PolicyAttr
 policyRefP = PolicyRef <$> (char '@' *> policyVar sc)

@@ -16,6 +16,7 @@ import           Text.QuasiText
 import           Text.Printf
 
 import           Binah.CodeGen.Ast
+import           Control.Monad                  ( (<=<) )
 
 render :: Binah -> Text
 render (Binah decls inline) = [embed|
@@ -185,10 +186,9 @@ $(it (entityField policies accessors record) fields "\n\n")
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
     )
     fields
-  inlinePolicies = mapMaybe (inlinePolicy . fieldPolicy) fields
-  policyRefs     = map getPolicy . nub $ mapMaybe (policyRef . fieldPolicy) fields
+  inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
+  policyRefs     = map (lookupPolicy policies) . nub $ mapMaybe (policyRef <=< fieldPolicy) fields
   fieldPolicies  = inlinePolicies ++ policyRefs
-  getPolicy      = fromJust . flip lookup policies
   policyBodies   = map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
   disjPolicy     = Policy ["row", "viewer"] (disjunction policyBodies)
 
@@ -250,15 +250,11 @@ fmtPolicy :: [String] -> Policy -> String
 fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
   where renderedBody = renderReft (insertEntityVal accessors body)
 
-fmtPolicyAttr :: [String] -> [(String, Policy)] -> PolicyAttr -> String
+fmtPolicyAttr :: [String] -> [(String, Policy)] -> Maybe PolicyAttr -> String
 fmtPolicyAttr accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
  where
-  Policy args body = fromMaybe policyTrue2 (extractPolicy policies fieldPolicy)
+  Policy args body = fieldPolicy & fmap (extractPolicy policies) & fromMaybe policyTrue2
   renderedBody     = renderReft (insertEntityVal accessors body)
-  extractPolicy _        NoPolicy              = Nothing
-  extractPolicy policies (PolicyRef    name  ) = Just $ fromJust (lookup name policies)
-  extractPolicy _        (InlinePolicy policy) = Just policy
-
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
@@ -345,10 +341,7 @@ findUpdatePolicy :: [(String, Policy)] -> [UpdatePolicy] -> String -> String -> 
 findUpdatePolicy policies updatePolicies fieldName capability = policy
  where
   f (UpdatePolicy fields policyAttr) =
-    if fieldName `elem` fields then Just (getPolicy policyAttr) else Nothing
-  getPolicy (InlinePolicy policy) = policy
-  getPolicy (PolicyRef    name  ) = fromJust $ lookup name policies
-  getPolicy NoPolicy              = policyTrue3
+    if fieldName `elem` fields then Just (extractPolicy policies policyAttr) else Nothing
   Policy args body = fromMaybe policyTrue3 (safeHead . mapMaybe f $ updatePolicies)
   policy           = Policy args (implies body (RApp [RConst capability, RConst (head args)]))
 
@@ -357,3 +350,11 @@ safeHead :: [a] -> Maybe a
 safeHead []       = Nothing
 safeHead (x : xs) = Just x
 
+
+extractPolicy :: [(String, Policy)] -> PolicyAttr -> Policy
+extractPolicy _        (InlinePolicy policy) = policy
+extractPolicy policies (PolicyRef    name  ) = lookupPolicy policies name
+
+-- TODO: Handle not found
+lookupPolicy :: [(String, Policy)] -> String -> Policy
+lookupPolicy policies = fromJust . flip lookup policies
