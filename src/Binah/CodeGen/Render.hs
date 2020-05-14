@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -17,12 +18,45 @@ import           Text.Printf
 
 import           Binah.CodeGen.Ast
 import           Control.Monad                  ( (<=<) )
+import           Control.Monad.Reader           ( Reader(..)
+                                                , MonadReader(..)
+                                                , runReader
+                                                , asks
+                                                )
 
 
 import           Binah.CodeGen.Helpers
 
+type Renderer = Reader Env
+
+data Env = Env { envBinah :: Binah, envAccessors :: [String] }
+
+askInline :: MonadReader Env m => m (Maybe String)
+askInline = asks $ (\(Binah _ inline) -> inline) . envBinah
+
+askDecls :: MonadReader Env m => ([Decl] -> [a]) -> m [a]
+askDecls f = asks (f . binahDecls . envBinah)
+
+askAccessors :: MonadReader Env m => m [String]
+askAccessors = asks envAccessors
+
 render :: Binah -> Text
-render (Binah decls inline) = [embed|
+render binah@(Binah decls inline) = runReader binahR (Env binah accessors)
+ where
+  records = recordDecls decls
+  accessors =
+    concatMap (\(Rec name items) -> mapFields (accessorName name . fieldName) items) records
+
+binahR :: Renderer Text
+binahR = do
+  records      <- askDecls recordDecls
+  preds        <- askDecls predDecls
+  policies     <- askDecls policyDecls
+  inline       <- askInline
+  binahRecords <- mapM binahRecordR records
+  policyDecls  <- mapM policyDeclR policies
+  exports      <- exportsR
+  return [embed|
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -34,7 +68,7 @@ render (Binah decls inline) = [embed|
 {-@ LIQUID "--compile-spec" @-}
 
 module Model 
-  ( $(it id (exports records) "\n  , ")
+  ( $(it id exports "\n  , ")
   )
 
 where
@@ -79,7 +113,7 @@ $(it predicateDecl preds "\n\n")
 -- | Policies
 --------------------------------------------------------------------------------
 
-$(it (uncurry $ policyDecl accessors) policies "\n\n")
+$(it id policyDecls "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Records
@@ -101,7 +135,7 @@ persistentRecord (BinahRecord record) = record
 
 {-@ measure getJust :: Key record -> Entity record @-}
 
-$(it (binahRecord policies accessors) records "\n\n")
+$(it id binahRecords "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -110,30 +144,25 @@ $(it (binahRecord policies accessors) records "\n\n")
 $(fromMaybe "" inline)
 
 |]
- where
-  qqEnd    = "|]"
-  records  = recordDecls decls
-  preds    = predDecls decls
-  policies = policyDecls decls
-  accessors =
-    concatMap (\(Rec name items) -> mapFields (accessorName name . fieldName) items) records
+  where qqEnd = "|]"
 
-exports :: [Rec] -> [String]
-exports records =
-  ["EntityFieldWrapper(..)", "migrateAll", "BinahRecord", "persistentRecord"]
-    ++ mkFuns
-    ++ recNames
-    ++ entityFields
-    ++ recIds
+exportsR :: Renderer [String]
+exportsR = do
+  records <- askDecls recordDecls
+  return
+    (  ["EntityFieldWrapper(..)", "migrateAll", "BinahRecord", "persistentRecord"]
+    ++ mkRec records
+    ++ map recName records
+    ++ entityFields records
+    ++ recIds records
+    )
  where
-  recNames     = map recName records
-  recIds       = map (++ "Id") recNames
-  mkFuns       = map ("mk" ++) recNames
+  recIds       = map ((++ "Id") . recName)
+  mkRec        = map (("mk" ++) . recName)
   entityFields = concatMap
     (\(Rec name items) ->
       entityFieldBinahName name "id" : mapFields (entityFieldBinahName name . fieldName) items
     )
-    records
 
 persistentRecord :: Rec -> Text
 persistentRecord (Rec name items) = [embed|
@@ -149,20 +178,56 @@ predicateDecl (Pred name argtys) = [embed|
 {-@ measure $name :: $(it id argtys " -> ") -> Bool @-}
 |]
 
-policyDecl :: [String] -> String -> Policy -> Text
-policyDecl accessors name (Policy args body) = [embed|
+policyDeclR :: (String, Policy) -> Renderer Text
+policyDeclR (name, (Policy args body)) = do
+  accessors <- askAccessors
+  let f = argsToUpper args . insertEntityVal accessors
+  return [embed|
 {-@ predicate $name $(upper (unwords args)) = $(renderReft (f body)) @-}
 |]
- where
-  upper = map toUpper
-  f     = argsToUpper args . insertEntityVal accessors
+  where upper = map toUpper
 
-binahRecord :: [(String, Policy)] -> [String] -> Rec -> Text
-binahRecord policies accessors record@(Rec recName items) = [embed|
+binahRecordR :: Rec -> Renderer Text
+binahRecordR record@(Rec recName items) = do
+  mkRec        <- mkRecR record
+  entityFields <- mapM (entityFieldR record) fields
+  return [embed|
 -- * $recName
+$mkRec
 
-$(it fmtField fields "\n")
+{-@ invariant {v: Entity $recName | v == getJust (entityKey v)} @-}
 
+$(it (assert recName fields) asserts "\n\n")
+
+$(entityKey recName)
+
+$(it id entityFields "\n\n")
+|]
+ where
+  fields  = filterFields items
+  asserts = filterAsserts items
+
+mkRecR :: Rec -> Renderer Text
+mkRecR (Rec recName items) = do
+  accessors <- askAccessors
+  policies  <- askDecls policyDecls
+  let
+    fields       = filterFields items
+    insertPolicy = lookupInsertPolicy items
+    argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
+    argTys       = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
+    pred         = imap
+      (\i (Field name _ _) ->
+        printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
+      )
+      fields
+    inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
+    policyRefs     = map (lookupPolicy policies) . nub $ mapMaybe (policyRef <=< fieldPolicy) fields
+    fieldPolicies  = inlinePolicies ++ policyRefs
+    policyBodies =
+      map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
+    disjPolicy = Policy ["row", "viewer"] (disjunction policyBodies)
+  return [embed|
 {-@ mk$recName :: 
      $(it id argTys "\n  -> ")
   -> BinahRecord < 
@@ -172,33 +237,8 @@ $(it fmtField fields "\n")
      > $recName
 @-}
 mk$recName $argNames = BinahRecord ($recName $argNames)
-
-{-@ invariant {v: Entity $recName | v == getJust (entityKey v)} @-}
-
-$(it (assert recName fields) asserts "\n\n")
-
-$(entityKey recName)
-
-$(it (entityField policies accessors record) fields "\n\n")
 |]
- where
-  fields       = filterFields items
-  insertPolicy = lookupInsertPolicy items
-  asserts      = filterAsserts items
-  fmtField (Field name ty _) =
-    printf "{-@ measure %s :: %s -> %s @-}" (accessorName recName name) recName ty :: String
-  argNames = unwords $ map (printf "x_%d") [0 .. length fields - 1]
-  argTys   = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
-  pred     = imap
-    (\i (Field name _ _) ->
-      printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
-    )
-    fields
-  inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
-  policyRefs     = map (lookupPolicy policies) . nub $ mapMaybe (policyRef <=< fieldPolicy) fields
-  fieldPolicies  = inlinePolicies ++ policyRefs
-  policyBodies   = map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
-  disjPolicy     = Policy ["row", "viewer"] (disjunction policyBodies)
+
 
 assert :: String -> [Field] -> Assert -> Text
 assert recName fields (Assert body) = [embed|
@@ -231,8 +271,15 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldBinah      = entityFieldBinahName recName "id"
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
-entityField :: [(String, Policy)] -> [String] -> Rec -> Field -> Text
-entityField policies accessors (Rec recName items) (Field fieldName typ policy) = [embed|
+entityFieldR :: Rec -> Field -> Renderer Text
+entityFieldR (Rec recName items) (Field fieldName typ policy) = do
+  policies  <- askDecls policyDecls
+  accessors <- askAccessors
+  let updatePolicy = findUpdatePolicy policies updatePolicies fieldName entityFieldCapability
+  return [embed|
+
+{-@ measure $accessor :: $recName -> $typ @-}
+
 {-@ measure $entityFieldCapability :: Entity $recName -> Bool @-}
 
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
@@ -252,7 +299,6 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName fieldName
   entityFieldCapability = entityFieldCapabilityName recName fieldName
   updatePolicies        = filterUpdates items
-  updatePolicy          = findUpdatePolicy policies updatePolicies fieldName entityFieldCapability
 
 fmtPolicy :: [String] -> Policy -> String
 fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
