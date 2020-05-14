@@ -40,6 +40,17 @@ askDecls f = asks (f . binahDecls . envBinah)
 askAccessors :: MonadReader Env m => m [String]
 askAccessors = asks envAccessors
 
+lookupPolicy :: MonadReader Env m => String -> m Policy
+lookupPolicy name = fromJust . lookup name <$> askDecls policyDecls
+
+extractPolicy :: MonadReader Env m => PolicyAttr -> m Policy
+extractPolicy (InlinePolicy policy) = return policy
+extractPolicy (PolicyRef    name  ) = lookupPolicy name
+
+-- -- TODO: Handle not found
+-- lookupPolicy :: [(String, Policy)] -> String -> Policy
+-- lookupPolicy policies = fromJust . flip lookup policies
+
 render :: Binah -> Text
 render binah@(Binah decls inline) = runReader binahR (Env binah accessors)
  where
@@ -209,35 +220,35 @@ $(it id entityFields "\n\n")
 
 mkRecR :: Rec -> Renderer Text
 mkRecR (Rec recName items) = do
-  accessors <- askAccessors
-  policies  <- askDecls policyDecls
-  let
-    fields       = filterFields items
-    insertPolicy = lookupInsertPolicy items
-    argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
-    argTys       = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
-    pred         = imap
-      (\i (Field name _ _) ->
-        printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
-      )
-      fields
-    inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
-    policyRefs     = map (lookupPolicy policies) . nub $ mapMaybe (policyRef <=< fieldPolicy) fields
-    fieldPolicies  = inlinePolicies ++ policyRefs
-    policyBodies =
-      map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
-    disjPolicy = Policy ["row", "viewer"] (disjunction policyBodies)
+  accessors  <- askAccessors
+  policyRefs <- mapM lookupPolicy (nub $ mapMaybe (policyRef <=< fieldPolicy) fields)
+  let fieldPolicies = inlinePolicies ++ policyRefs
+      policyBodies =
+        map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
+  disjPolicy   <- fmtPolicy $ Policy ["row", "viewer"] (disjunction policyBodies)
+  insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName :: 
      $(it id argTys "\n  -> ")
   -> BinahRecord < 
        {\row -> $(it id pred " && ")}
-     , {$(fmtPolicyAttr accessors policies insertPolicy)}
-     , {$(fmtPolicy accessors disjPolicy)}
+     , {$insertPolicy}
+     , {$disjPolicy}
      > $recName
 @-}
 mk$recName $argNames = BinahRecord ($recName $argNames)
 |]
+ where
+  fields       = filterFields items
+  insertPolicy = lookupInsertPolicy items
+  argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
+  argTys       = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
+  pred         = imap
+    (\i (Field name _ _) ->
+      printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
+    )
+    fields
+  inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
 
 
 assert :: String -> [Field] -> Assert -> Text
@@ -272,10 +283,10 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityFieldR :: Rec -> Field -> Renderer Text
-entityFieldR (Rec recName items) (Field fieldName typ policy) = do
-  policies  <- askDecls policyDecls
-  accessors <- askAccessors
-  let updatePolicy = findUpdatePolicy policies updatePolicies fieldName entityFieldCapability
+entityFieldR (Rec recName items) (Field fieldName typ policyAttr) = do
+  accessors    <- askAccessors
+  updatePolicy <- findUpdatePolicy updatePolicies fieldName entityFieldCapability >>= fmtPolicy
+  readPolicy   <- fmtPolicyAttr policyAttr
   return [embed|
 
 {-@ measure $accessor :: $recName -> $typ @-}
@@ -283,11 +294,11 @@ entityFieldR (Rec recName items) (Field fieldName typ policy) = do
 {-@ measure $entityFieldCapability :: Entity $recName -> Bool @-}
 
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {$(fmtPolicyAttr accessors policies policy)}
+    {$readPolicy}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
   , {\old -> $entityFieldCapability old}
-  , {$(fmtPolicy accessors updatePolicy)}
+  , {$updatePolicy}
   > _ _
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $typ
@@ -300,15 +311,18 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldCapability = entityFieldCapabilityName recName fieldName
   updatePolicies        = filterUpdates items
 
-fmtPolicy :: [String] -> Policy -> String
-fmtPolicy accessors (Policy args body) = printf "\\%s -> %s" (unwords args) renderedBody
-  where renderedBody = renderReft (insertEntityVal accessors body)
+fmtPolicy :: Policy -> Renderer String
+fmtPolicy (Policy args body) = do
+  accessors <- askAccessors
+  let renderedBody = renderReft (insertEntityVal accessors body)
+  return $ printf "\\%s -> %s" (unwords args) renderedBody
 
-fmtPolicyAttr :: [String] -> [(String, Policy)] -> Maybe PolicyAttr -> String
-fmtPolicyAttr accessors policies fieldPolicy = printf "\\%s -> %s" (unwords args) renderedBody
- where
-  Policy args body = fieldPolicy & fmap (extractPolicy policies) & fromMaybe policyTrue2
-  renderedBody     = renderReft (insertEntityVal accessors body)
+fmtPolicyAttr :: Maybe PolicyAttr -> Renderer String
+fmtPolicyAttr policyAttr = do
+  policy <- case policyAttr of
+    Nothing         -> return policyTrue2
+    Just policyAttr -> extractPolicy policyAttr
+  fmtPolicy policy
 
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
@@ -391,19 +405,14 @@ normalizeBody row viewer = f
                | otherwise   = RConst s
 
 
-findUpdatePolicy :: [(String, Policy)] -> [UpdatePolicy] -> String -> String -> Policy
-findUpdatePolicy policies updatePolicies fieldName capability = policy
+findUpdatePolicy :: [UpdatePolicy] -> String -> String -> Renderer Policy
+findUpdatePolicy updatePolicies fieldName capability = do
+  case policyAttr of
+    Just policyAttr -> do
+      (Policy args body) <- extractPolicy policyAttr
+      return $ Policy args (implies body (RApp [RConst capability, RConst (head args)]))
+    Nothing -> return $ Policy ["old", "_", "_"] (RApp [RConst capability, RConst "old"])
  where
-  f (UpdatePolicy fields policyAttr) =
-    if fieldName `elem` fields then Just (extractPolicy policies policyAttr) else Nothing
-  Policy args body = fromMaybe policyTrue3 (safeHead . mapMaybe f $ updatePolicies)
-  policy           = Policy args (implies body (RApp [RConst capability, RConst (head args)]))
+  f (UpdatePolicy fields policyAttr) = if fieldName `elem` fields then Just policyAttr else Nothing
+  policyAttr = safeHead . mapMaybe f $ updatePolicies
 
-
-extractPolicy :: [(String, Policy)] -> PolicyAttr -> Policy
-extractPolicy _        (InlinePolicy policy) = policy
-extractPolicy policies (PolicyRef    name  ) = lookupPolicy policies name
-
--- TODO: Handle not found
-lookupPolicy :: [(String, Policy)] -> String -> Policy
-lookupPolicy policies = fromJust . flip lookup policies
