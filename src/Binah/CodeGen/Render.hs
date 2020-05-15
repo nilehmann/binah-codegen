@@ -216,9 +216,9 @@ $(join entityFields "\n\n")
   asserts = filterAsserts items
 
 mkRecR :: Rec -> Renderer Text
-mkRecR (Rec recName items) = do
-  policyRefs <- mapM lookupPolicy (nub $ mapMaybe (policyRef <=< fieldPolicy) fields)
-  let readPolicies = map normalize (inlinePolicies ++ policyRefs)
+mkRecR record@(Rec recName items) = do
+  refPolicies <- mapM lookupPolicy refPolicies
+  let readPolicies = map normalize (inlinePolicies ++ refPolicies)
   visibility   <- fmtPolicy $ unnormalize (policyDisjunction 2 readPolicies)
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
@@ -242,7 +242,9 @@ mk$recName $argNames = BinahRecord ($recName $argNames)
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
     )
     fields
-  inlinePolicies = mapMaybe (inlinePolicy <=< fieldPolicy) fields
+  allReadPolicies = recAllReadPolicies record
+  inlinePolicies  = mapMaybe inlinePolicy allReadPolicies
+  refPolicies     = nub $ mapMaybe policyRef allReadPolicies
 
 
 assert :: String -> [Field] -> Assert -> Text

@@ -17,6 +17,7 @@ main = do
   case parse srcFile s of
     Left  e     -> putStrLn (errorBundlePretty e)
     Right binah -> T.putStrLn . render $ binah
+    --Right binah -> print binah
 
 getSrcFile :: IO String
 getSrcFile = do

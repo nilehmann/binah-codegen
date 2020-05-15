@@ -68,66 +68,62 @@ recDeclP = L.indentBlock scn $ do
   return (L.IndentMany Nothing (return . RecDecl . Rec name) recItemP)
 
 recItemP :: Parser RecItem
-recItemP = fieldP <|> assertP <|> readPolicyP <|> insertPolicyP <|> updatePolicyP
+recItemP = L.lineFold scn $ \sc' ->
+  fieldP sc' <|> assertP sc' <|> readPolicyP sc' <|> insertPolicyP sc' <|> updatePolicyP sc'
 
-fieldP :: Parser RecItem
-fieldP = do
+fieldP :: Parser () -> Parser RecItem
+fieldP sc' = do
   name   <- var sc
   typ    <- tycon sc
-  policy <- optional policyAttrP
+  policy <- optional (policyAttrP sc')
   return . FieldItem $ Field name typ policy
 
-updatePolicyP :: Parser RecItem
-updatePolicyP = UpdateItem . uncurry UpdatePolicy <$> policyForFieldsP "update"
+updatePolicyP :: Parser () -> Parser RecItem
+updatePolicyP sc' = UpdateItem . uncurry UpdatePolicy <$> policyForFieldsP sc' "update"
 
-readPolicyP :: Parser RecItem
-readPolicyP = ReadItem . uncurry ReadPolicy <$> policyForFieldsP "read"
+readPolicyP :: Parser () -> Parser RecItem
+readPolicyP sc' = ReadItem . uncurry ReadPolicy <$> policyForFieldsP sc' "read"
 
-insertPolicyP :: Parser RecItem
-insertPolicyP = L.symbol sc "insert" >> (InsertItem <$> policyAttrP)
+insertPolicyP :: Parser () -> Parser RecItem
+insertPolicyP sc' = L.symbol sc' "insert" >> (InsertItem <$> policyAttrP sc')
 
-policyForFieldsP :: Text -> Parser ([String], PolicyAttr)
-policyForFieldsP action = do
-  L.symbol sc action
-  fields <- fieldPatternP
-  policy <- policyAttrP
+policyForFieldsP :: Parser () -> Text -> Parser ([String], PolicyAttr)
+policyForFieldsP sc' action = do
+  L.symbol sc' action
+  fields <- fieldPatternP sc'
+  policy <- policyAttrP sc'
   return (fields, policy)
 
-assertP :: Parser RecItem
-assertP = do
-  symbol "assert"
-  AssertItem . Assert <$> between (symbol "[") (symbol "]") (reft scn)
-  where symbol = L.symbol sc
-
+assertP :: Parser () -> Parser RecItem
+assertP sc' = do
+  L.symbol sc' "assert"
+  AssertItem . Assert <$> between (L.symbol sc' "[") (L.symbol sc "]") (reftP sc')
 
 -- TODO: Implement wildcard
-fieldPatternP :: Parser [String]
-fieldPatternP = fieldListP <|> pure <$> var sc
+fieldPatternP :: Parser () -> Parser [String]
+fieldPatternP sc' = between (symbol "[") (symbol "]") (var sc' `sepBy` symbol ",")
+  where symbol = L.symbol sc'
 
-fieldListP :: Parser [String]
-fieldListP = between (symbol "[") (symbol "]") (var scn `sepBy` symbol ",")
-  where symbol = L.symbol scn
 
 --------------------------------------------------------------------------------
 -- | Policies
 --------------------------------------------------------------------------------
 
-policyAttrP :: Parser PolicyAttr
-policyAttrP = policyRefP <|> inlinePolicyP
+policyAttrP :: Parser () -> Parser PolicyAttr
+policyAttrP sc' = policyRefP <|> inlinePolicyP sc'
 
 policyRefP :: Parser PolicyAttr
 policyRefP = PolicyRef <$> (char '@' *> policyVar sc)
 
-inlinePolicyP :: Parser PolicyAttr
-inlinePolicyP = InlinePolicy <$> between (symbol "{") (symbol "}") (policyP scn)
-  where symbol = L.symbol sc
+inlinePolicyP :: Parser () -> Parser PolicyAttr
+inlinePolicyP sc' = InlinePolicy <$> between (L.symbol sc' "{") (L.symbol sc "}") (policyP sc')
 
 policyP :: Parser () -> Parser Policy
 policyP sc' = do
   let symbol = L.symbol sc'
   symbol "\\"
   args <- someTill (var sc') $ arrow sc'
-  body <- reft (try sc' <|> sc)
+  body <- reftP (try sc' <|> sc)
   scn
   return $ Policy args body
 
@@ -144,8 +140,8 @@ ascSymbols = "!#$%&⋆+./<=>?@\\^|-~:"
 op :: Parser () -> Parser String
 op sc = L.lexeme sc $ some (oneOf ascSymbols <|> symbolChar)
 
-reft :: Parser () -> Parser Reft
-reft sc = uncurry ROps <$> reftApp sc `sepBy1_` op sc
+reftP :: Parser () -> Parser Reft
+reftP sc = uncurry ROps <$> reftApp sc `sepBy1_` op sc
 
 reftApp :: Parser () -> Parser Reft
 reftApp sc = RApp <$> some (reftConst sc <|> reftParen sc)
@@ -155,7 +151,7 @@ reftConst sc' = RConst <$> some (satisfy p) <* sc'
   where p c = not (isSpace c || isSymbol c || c `elem` ascSymbols ++ "()][{}")
 
 reftParen :: Parser () -> Parser Reft
-reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symbol = L.symbol sc
+reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reftP sc) where symbol = L.symbol sc
 
 --------------------------------------------------------------------------------
 -- | Identifiers

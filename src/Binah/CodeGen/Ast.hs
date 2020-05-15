@@ -84,6 +84,13 @@ recUpdatePolicies (Rec _ items) fieldName = mapMaybe f items
   f (UpdateItem (UpdatePolicy fields policy)) | fieldName `elem` fields = Just policy
   f _ = Nothing
 
+recAllReadPolicies :: Rec -> [PolicyAttr]
+recAllReadPolicies (Rec _ items) = fieldPolicies ++ mapMaybe f items
+ where
+  fieldPolicies = mapMaybe fieldPolicy (filterFields items)
+  f (ReadItem (ReadPolicy _ policy)) = Just policy
+  f _ = Nothing
+
 fieldItem :: RecItem -> Maybe Field
 fieldItem (FieldItem item) = Just item
 fieldItem _                = Nothing
