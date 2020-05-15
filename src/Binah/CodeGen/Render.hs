@@ -219,7 +219,7 @@ mkRecR :: Rec -> Renderer Text
 mkRecR (Rec recName items) = do
   policyRefs <- mapM lookupPolicy (nub $ mapMaybe (policyRef <=< fieldPolicy) fields)
   let readPolicies = map normalize (inlinePolicies ++ policyRefs)
-  disjPolicy   <- fmtPolicy $ unnormalize (policyDisjunction 2 readPolicies)
+  visibility   <- fmtPolicy $ unnormalize (policyDisjunction 2 readPolicies)
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName :: 
@@ -227,7 +227,7 @@ mkRecR (Rec recName items) = do
   -> BinahRecord < 
        {\row -> $(join pred " && ")}
      , {$insertPolicy}
-     , {$disjPolicy}
+     , {$visibility}
      > $recName
 @-}
 mk$recName $argNames = BinahRecord ($recName $argNames)
@@ -278,9 +278,11 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 
 entityFieldR :: Rec -> Field -> Renderer Text
 entityFieldR record@(Rec recName items) (Field fieldName typ _) = do
-  updatePolicy <- findUpdatePolicy updatePolicies fieldName capability >>= fmtPolicy
+  updatePolicy <- getUpdatePolicy record fieldName >>= fmtPolicy
   readPolicies <- mapM extractPolicy $ recReadPolicies record fieldName
-  readPolicy   <- fmtPolicy . unnormalize . policyDisjunction 2 $ map normalize readPolicies
+  readPolicy   <- case map normalize readPolicies of
+    []           -> fmtPolicy $ policyTrue 2
+    readPolicies -> fmtPolicy . unnormalize . policyDisjunction 2 $ readPolicies
   return [embed|
 {-@ measure $accessor :: $recName -> $typ @-}
 
@@ -301,8 +303,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
-  capability            = entityCapabilityName recName fieldName
-  updatePolicies        = filterUpdates items
+  capability            = capabilityName recName fieldName
 
 fmtPolicy :: Policy -> Renderer String
 fmtPolicy (Policy args body) = do
@@ -325,8 +326,8 @@ entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
 entityFieldPersistentName :: String -> String -> String
 entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName
 
-entityCapabilityName :: String -> String -> String
-entityCapabilityName recName fieldName = accessorName recName fieldName ++ "Cap"
+capabilityName :: String -> String -> String
+capabilityName recName fieldName = accessorName recName fieldName ++ "Cap"
 
 --------------------------------------------------------------------------------
 -- | Refinements
@@ -377,15 +378,14 @@ instance ToText Text where
 instance ToText [Char] where
   toText = T.pack
 
-findUpdatePolicy :: [UpdatePolicy] -> String -> String -> Renderer Policy
-findUpdatePolicy updatePolicies fieldName capability = do
-  case policyAttr of
-    Just policyAttr -> do
-      policy <- normalize <$> extractPolicy policyAttr
-      return $ unnormalize (addCapability policy)
-    Nothing -> return $ Policy ["old", "_", "_"] (RApp [RConst capability, RConst "old"])
+getUpdatePolicy :: Rec -> String -> Renderer Policy
+getUpdatePolicy record fieldName = do
+  updatePolicies <- mapM extractPolicy $ recUpdatePolicies record fieldName
+  case updatePolicies of
+    [] -> return nullaryCase
+    _  -> return . unnormalize . addCapability . policyDisjunction 3 $ map normalize updatePolicies
  where
-  f (UpdatePolicy fields policyAttr) = if fieldName `elem` fields then Just policyAttr else Nothing
-  policyAttr = safeHead . mapMaybe f $ updatePolicies
+  capability  = capabilityName (recName record) fieldName
+  nullaryCase = Policy ["old", "_", "_"] (RApp [RConst capability, RConst "old"])
   addCapability policy =
     mapBody1 (\arg1 body -> implies body (RApp [RConst capability, RConst arg1])) policy

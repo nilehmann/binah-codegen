@@ -78,6 +78,12 @@ recReadPolicies (Rec _ items) fieldName = fieldPolicy ++ mapMaybe f items
   f (ReadItem (ReadPolicy fields policy)) | fieldName `elem` fields = Just policy
   f _ = Nothing
 
+recUpdatePolicies :: Rec -> String -> [PolicyAttr]
+recUpdatePolicies (Rec _ items) fieldName = mapMaybe f items
+ where
+  f (UpdateItem (UpdatePolicy fields policy)) | fieldName `elem` fields = Just policy
+  f _ = Nothing
+
 fieldItem :: RecItem -> Maybe Field
 fieldItem (FieldItem item) = Just item
 fieldItem _                = Nothing
@@ -87,17 +93,6 @@ mapFields f = mapMaybe (fmap f . fieldItem)
 
 filterFields :: [RecItem] -> [Field]
 filterFields = mapFields id
-
-
-updateItem :: RecItem -> Maybe UpdatePolicy
-updateItem (UpdateItem item) = Just item
-updateItem _                 = Nothing
-
-mapUpdates :: (UpdatePolicy -> a) -> [RecItem] -> [a]
-mapUpdates f = mapMaybe (fmap f . updateItem)
-
-filterUpdates :: [RecItem] -> [UpdatePolicy]
-filterUpdates = mapUpdates id
 
 insertItem :: RecItem -> Maybe PolicyAttr
 insertItem (InsertItem item) = Just item
