@@ -10,3 +10,7 @@ mapHead _ []       = []
 
 imap :: (Int -> a -> b) -> [a] -> [b]
 imap f = zipWith f [0 ..]
+
+interleave :: [a] -> [a] -> [a]
+interleave (x : xs) ys = x : interleave ys xs
+interleave []       ys = ys

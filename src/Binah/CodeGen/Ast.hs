@@ -135,12 +135,8 @@ data Policy = Policy
   }
   deriving Show
 
-policyTrue2 :: Policy
-policyTrue2 = Policy ["x", "y"] (RConst "True")
-
-policyTrue3 :: Policy
-policyTrue3 = Policy ["x", "y", "z"] (RConst "True")
-
+policyTrue :: Int -> Policy
+policyTrue nargs = Policy (replicate nargs "_") (RConst "True")
 
 ----------------------------------------------------------------------------------------------------
 -- | Refinements
@@ -163,7 +159,7 @@ implies :: Reft -> Reft -> Reft
 implies p1 p2 = ROps [RParen p1, RParen p2] ["=>"]
 
 ----------------------------------------------------------------------------------------------------
--- | Alpha normalized policies
+-- | Policies with an alpha normalized refinement
 ----------------------------------------------------------------------------------------------------
 
 data NormalizedPolicy = NormalizedPolicy Int Reft

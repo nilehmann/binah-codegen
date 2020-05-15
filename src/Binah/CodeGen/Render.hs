@@ -79,7 +79,7 @@ binahR = do
 {-@ LIQUID "--compile-spec" @-}
 
 module Model 
-  ( $(it id exports "\n  , ")
+  ( $(join exports "\n  , ")
   )
 
 where
@@ -97,7 +97,7 @@ import qualified Database.Persist              as Persist
 import           Binah.Core
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-$(it persistentRecord records "\n\n")
+$(mapJoin persistentRecord records "\n\n")
 $qqEnd
 
 {-@
@@ -118,13 +118,13 @@ data EntityFieldWrapper record typ = EntityFieldWrapper (Persist.EntityField rec
 -- | Predicates
 --------------------------------------------------------------------------------
 
-$(it predicateDecl preds "\n\n")
+$(mapJoin predicateDecl preds "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Policies
 --------------------------------------------------------------------------------
 
-$(it id policyDecls "\n\n")
+$(join policyDecls "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Records
@@ -146,7 +146,7 @@ persistentRecord (BinahRecord record) = record
 
 {-@ measure getJust :: Key record -> Entity record @-}
 
-$(it id binahRecords "\n\n")
+$(join binahRecords "\n\n")
 
 --------------------------------------------------------------------------------
 -- | Inline
@@ -178,7 +178,7 @@ exportsR = do
 persistentRecord :: Rec -> Text
 persistentRecord (Rec name items) = [embed|
 $name
-  $(it fmtField fields "\n  ")
+  $(mapJoin fmtField fields "\n  ")
 |]
  where
   fmtField (Field name typ _) = printf "%s %s" name typ :: String
@@ -186,7 +186,7 @@ $name
 
 predicateDecl :: Pred -> Text
 predicateDecl (Pred name argtys) = [embed|
-{-@ measure $name :: $(it id argtys " -> ") -> Bool @-}
+{-@ measure $name :: $(join argtys " -> ") -> Bool @-}
 |]
 
 policyDeclR :: (String, Policy) -> Renderer Text
@@ -205,11 +205,11 @@ $mkRec
 
 {-@ invariant {v: Entity $recName | v == getJust (entityKey v)} @-}
 
-$(it (assert recName fields) asserts "\n\n")
+$(mapJoin (assert recName fields) asserts "\n\n")
 
 $(entityKey recName)
 
-$(it id entityFields "\n\n")
+$(join entityFields "\n\n")
 |]
  where
   fields  = filterFields items
@@ -223,9 +223,9 @@ mkRecR (Rec recName items) = do
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName :: 
-     $(it id argTys "\n  -> ")
+     $(join argTys "\n  -> ")
   -> BinahRecord < 
-       {\row -> $(it id pred " && ")}
+       {\row -> $(join pred " && ")}
      , {$insertPolicy}
      , {$disjPolicy}
      > $recName
@@ -236,7 +236,7 @@ mk$recName $argNames = BinahRecord ($recName $argNames)
   fields       = filterFields items
   insertPolicy = lookupInsertPolicy items
   argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
-  argTys       = imap (\i (Field name typ _) -> printf "x_%d: %s" i typ :: String) fields
+  argTys       = imap (\i (Field _ typ _) -> printf "x_%d: %s" i typ :: String) fields
   pred         = imap
     (\i (Field name _ _) ->
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
@@ -278,19 +278,18 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 
 entityFieldR :: Rec -> Field -> Renderer Text
 entityFieldR (Rec recName items) (Field fieldName typ policyAttr) = do
-  updatePolicy <- findUpdatePolicy updatePolicies fieldName entityFieldCapability >>= fmtPolicy
+  updatePolicy <- findUpdatePolicy updatePolicies fieldName capability >>= fmtPolicy
   readPolicy   <- fmtPolicyAttr policyAttr
   return [embed|
-
 {-@ measure $accessor :: $recName -> $typ @-}
 
-{-@ measure $entityFieldCapability :: Entity $recName -> Bool @-}
+{-@ measure $capability :: Entity $recName -> Bool @-}
 
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {$readPolicy}
   , {\row field  -> field == $accessor (entityVal row)}
   , {\field row  -> field == $accessor (entityVal row)}
-  , {\old -> $entityFieldCapability old}
+  , {\old -> $capability old}
   , {$updatePolicy}
   > _ _
 @-}
@@ -301,7 +300,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
-  entityFieldCapability = entityFieldCapabilityName recName fieldName
+  capability            = entityCapabilityName recName fieldName
   updatePolicies        = filterUpdates items
 
 fmtPolicy :: Policy -> Renderer String
@@ -312,7 +311,7 @@ fmtPolicy (Policy args body) = do
 fmtPolicyAttr :: Maybe PolicyAttr -> Renderer String
 fmtPolicyAttr policyAttr = do
   policy <- case policyAttr of
-    Nothing         -> return policyTrue2
+    Nothing         -> return (policyTrue 2)
     Just policyAttr -> extractPolicy policyAttr
   fmtPolicy policy
 
@@ -325,13 +324,12 @@ entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
 entityFieldPersistentName :: String -> String -> String
 entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName
 
-entityFieldCapabilityName :: String -> String -> String
-entityFieldCapabilityName recName fieldName = accessorName recName fieldName ++ "Cap"
+entityCapabilityName :: String -> String -> String
+entityCapabilityName recName fieldName = accessorName recName fieldName ++ "Cap"
 
 --------------------------------------------------------------------------------
 -- | Refinements
 --------------------------------------------------------------------------------
-
 
 renderReft :: Reft -> String
 renderReft (ROps refts ops) = unwords $ interleave (map renderReft refts) ops
@@ -363,8 +361,11 @@ argsToUpper args = f
 -- | Helpers
 --------------------------------------------------------------------------------
 
-it :: (ToText sep, ToText b) => (a -> b) -> [a] -> sep -> Text
-it f xs sep = T.intercalate (toText sep) . map (toText . f) $ xs
+join :: ToText a => [a] -> String -> Text
+join = mapJoin id
+
+mapJoin :: (ToText sep, ToText b) => (a -> b) -> [a] -> sep -> Text
+mapJoin f xs sep = T.intercalate (toText sep) . map (toText . f) $ xs
 
 class ToText a where
   toText :: a -> Text
@@ -374,10 +375,6 @@ instance ToText Text where
 
 instance ToText [Char] where
   toText = T.pack
-
-interleave :: [a] -> [a] -> [a]
-interleave (x : xs) ys = x : interleave ys xs
-interleave []       ys = ys
 
 findUpdatePolicy :: [UpdatePolicy] -> String -> String -> Renderer Policy
 findUpdatePolicy updatePolicies fieldName capability = do
@@ -391,4 +388,3 @@ findUpdatePolicy updatePolicies fieldName capability = do
   policyAttr = safeHead . mapMaybe f $ updatePolicies
   addCapability policy =
     mapBody1 (\arg1 body -> implies body (RApp [RConst capability, RConst arg1])) policy
-
