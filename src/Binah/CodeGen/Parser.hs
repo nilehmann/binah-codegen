@@ -68,7 +68,7 @@ recDeclP = L.indentBlock scn $ do
   return (L.IndentMany Nothing (return . RecDecl . Rec name) recItemP)
 
 recItemP :: Parser RecItem
-recItemP = fieldP <|> assertP <|> insertPolicyP <|> updatePolicyP
+recItemP = fieldP <|> assertP <|> readPolicyP <|> insertPolicyP <|> updatePolicyP
 
 fieldP :: Parser RecItem
 fieldP = do
@@ -77,21 +77,28 @@ fieldP = do
   policy <- optional policyAttrP
   return . FieldItem $ Field name typ policy
 
+updatePolicyP :: Parser RecItem
+updatePolicyP = UpdateItem . uncurry UpdatePolicy <$> policyForFieldsP "update"
+
+readPolicyP :: Parser RecItem
+readPolicyP = ReadItem . uncurry ReadPolicy <$> policyForFieldsP "read"
+
+insertPolicyP :: Parser RecItem
+insertPolicyP = L.symbol sc "insert" >> (InsertItem <$> policyAttrP)
+
+policyForFieldsP :: Text -> Parser ([String], PolicyAttr)
+policyForFieldsP action = do
+  L.symbol sc action
+  fields <- fieldPatternP
+  policy <- policyAttrP
+  return (fields, policy)
+
 assertP :: Parser RecItem
 assertP = do
   symbol "assert"
   AssertItem . Assert <$> between (symbol "[") (symbol "]") (reft scn)
   where symbol = L.symbol sc
 
-insertPolicyP :: Parser RecItem
-insertPolicyP = L.symbol sc "insert" >> (InsertItem <$> policyAttrP)
-
-updatePolicyP :: Parser RecItem
-updatePolicyP = do
-  L.symbol sc "update"
-  fields <- fieldPatternP
-  policy <- policyRefP <|> inlinePolicyP
-  return . UpdateItem $ UpdatePolicy fields policy
 
 -- TODO: Implement wildcard
 fieldPatternP :: Parser [String]
@@ -154,9 +161,9 @@ reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reft sc) where symb
 -- | Identifiers
 --------------------------------------------------------------------------------
 
--- TODO: We should put other reserved words here as well
+-- TODO: We should probably put other reserved words here as well
 reserved :: Parser Text
-reserved = "assert" <|> "deriving" <|> "insert" <|> "update"
+reserved = "assert" <|> "deriving" <|> "insert" <|> "update" <|> "read"
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')

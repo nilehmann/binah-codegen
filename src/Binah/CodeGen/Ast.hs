@@ -65,9 +65,18 @@ data Rec = Rec
 data RecItem
   = FieldItem Field
   | AssertItem Assert
+  | ReadItem ReadPolicy
   | InsertItem PolicyAttr
   | UpdateItem UpdatePolicy
   deriving Show
+
+recReadPolicies :: Rec -> String -> [PolicyAttr]
+recReadPolicies (Rec _ items) fieldName = fieldPolicy ++ mapMaybe f items
+ where
+  fields      = filterFields items
+  fieldPolicy = mapMaybe (\(Field n _ p) -> if n == fieldName then p else Nothing) fields
+  f (ReadItem (ReadPolicy fields policy)) | fieldName `elem` fields = Just policy
+  f _ = Nothing
 
 fieldItem :: RecItem -> Maybe Field
 fieldItem (FieldItem item) = Just item
@@ -78,6 +87,7 @@ mapFields f = mapMaybe (fmap f . fieldItem)
 
 filterFields :: [RecItem] -> [Field]
 filterFields = mapFields id
+
 
 updateItem :: RecItem -> Maybe UpdatePolicy
 updateItem (UpdateItem item) = Just item
@@ -106,7 +116,6 @@ mapAsserts f = mapMaybe (fmap f . assertItem)
 filterAsserts :: [RecItem] -> [Assert]
 filterAsserts = mapAsserts id
 
-
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
@@ -114,6 +123,8 @@ data Field = Field
   } deriving Show
 
 data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
+
+data ReadPolicy = ReadPolicy [String] PolicyAttr deriving Show
 
 data PolicyAttr = InlinePolicy Policy | PolicyRef String deriving Show
 

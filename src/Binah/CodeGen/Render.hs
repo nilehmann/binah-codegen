@@ -277,9 +277,10 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityFieldR :: Rec -> Field -> Renderer Text
-entityFieldR (Rec recName items) (Field fieldName typ policyAttr) = do
+entityFieldR record@(Rec recName items) (Field fieldName typ _) = do
   updatePolicy <- findUpdatePolicy updatePolicies fieldName capability >>= fmtPolicy
-  readPolicy   <- fmtPolicyAttr policyAttr
+  readPolicies <- mapM extractPolicy $ recReadPolicies record fieldName
+  readPolicy   <- fmtPolicy . unnormalize . policyDisjunction 2 $ map normalize readPolicies
   return [embed|
 {-@ measure $accessor :: $recName -> $typ @-}
 
