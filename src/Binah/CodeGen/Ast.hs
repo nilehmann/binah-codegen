@@ -1,10 +1,12 @@
 module Binah.CodeGen.Ast where
 
-import           Data.Typeable
 import           Data.Data
+import           Data.List
 import           Data.Maybe
+import           Data.Typeable
 
 import           Binah.CodeGen.Helpers
+import           Text.Printf                    ( printf )
 
 data Binah = Binah
   { binahDecls  :: [Decl]
@@ -19,7 +21,6 @@ data Binah = Binah
 data Decl
   = RecDecl Rec
   | PredDecl Pred
-
   | PolicyDecl String Policy
   deriving Show
 
@@ -160,3 +161,34 @@ disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "||")
 
 implies :: Reft -> Reft -> Reft
 implies p1 p2 = ROps [RParen p1, RParen p2] ["=>"]
+
+----------------------------------------------------------------------------------------------------
+-- | Alpha normalized policies
+----------------------------------------------------------------------------------------------------
+
+data NormalizedPolicy = NormalizedPolicy Int Reft
+
+normalize :: Policy -> NormalizedPolicy
+normalize (Policy args body) = NormalizedPolicy (length args) (f body)
+ where
+  f (ROps refts ops) = ROps (map f refts) ops
+  f (RApp   refts  ) = RApp (map f refts)
+  f (RParen reft   ) = RParen (f reft)
+  f (RConst s      ) = case elemIndex s args of
+    Nothing -> RConst s
+    Just i  -> RConst $ normalizedArg i
+
+policyDisjunction :: Int -> [NormalizedPolicy] -> NormalizedPolicy
+policyDisjunction nargs policies = NormalizedPolicy nargs (disjunction bodies)
+  where bodies = map (\(NormalizedPolicy _ b) -> b) policies
+
+unnormalize :: NormalizedPolicy -> Policy
+unnormalize (NormalizedPolicy nargs body) = Policy args body
+  where args = map normalizedArg [0 .. nargs - 1]
+
+mapBody1 :: (String -> Reft -> Reft) -> NormalizedPolicy -> NormalizedPolicy
+mapBody1 f (NormalizedPolicy nargs body) =
+  NormalizedPolicy (max nargs 1) (f (normalizedArg 0) body)
+
+normalizedArg :: Int -> String
+normalizedArg = printf "x_%d"

@@ -191,11 +191,8 @@ predicateDecl (Pred name argtys) = [embed|
 
 policyDeclR :: (String, Policy) -> Renderer Text
 policyDeclR (name, (Policy args body)) = do
-  accessors <- askAccessors
-  let f = argsToUpper args . insertEntityVal accessors
-  return [embed|
-{-@ predicate $name $(upper (unwords args)) = $(renderReft (f body)) @-}
-|]
+  renderedBody <- renderReft . argsToUpper args <$> insertEntityVal body
+  return [embed|{-@ predicate $name $(upper (unwords args)) = $renderedBody @-}|]
   where upper = map toUpper
 
 binahRecordR :: Rec -> Renderer Text
@@ -220,12 +217,9 @@ $(it id entityFields "\n\n")
 
 mkRecR :: Rec -> Renderer Text
 mkRecR (Rec recName items) = do
-  accessors  <- askAccessors
   policyRefs <- mapM lookupPolicy (nub $ mapMaybe (policyRef <=< fieldPolicy) fields)
-  let fieldPolicies = inlinePolicies ++ policyRefs
-      policyBodies =
-        map (\(Policy [row, viewer] body) -> normalizeBody row viewer body) fieldPolicies
-  disjPolicy   <- fmtPolicy $ Policy ["row", "viewer"] (disjunction policyBodies)
+  let readPolicies = map normalize (inlinePolicies ++ policyRefs)
+  disjPolicy   <- fmtPolicy $ unnormalize (policyDisjunction 2 readPolicies)
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName :: 
@@ -284,7 +278,6 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 
 entityFieldR :: Rec -> Field -> Renderer Text
 entityFieldR (Rec recName items) (Field fieldName typ policyAttr) = do
-  accessors    <- askAccessors
   updatePolicy <- findUpdatePolicy updatePolicies fieldName entityFieldCapability >>= fmtPolicy
   readPolicy   <- fmtPolicyAttr policyAttr
   return [embed|
@@ -313,8 +306,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 
 fmtPolicy :: Policy -> Renderer String
 fmtPolicy (Policy args body) = do
-  accessors <- askAccessors
-  let renderedBody = renderReft (insertEntityVal accessors body)
+  renderedBody <- renderReft <$> insertEntityVal body
   return $ printf "\\%s -> %s" (unwords args) renderedBody
 
 fmtPolicyAttr :: Maybe PolicyAttr -> Renderer String
@@ -347,15 +339,16 @@ renderReft (RApp   refts  ) = unwords (map renderReft refts)
 renderReft (RParen reft   ) = printf "(%s)" (renderReft reft)
 renderReft (RConst s      ) = s
 
-insertEntityVal :: [String] -> Reft -> Reft
-insertEntityVal accessors = f
- where
-  f (ROps refts ops) = ROps (map f refts) ops
-  f (RApp [RConst s, r]) | s `elem` accessors =
-    RApp [RConst s, RParen (RApp [RConst "entityVal", f r])]
-  f (RApp   refts) = RApp (map f refts)
-  f (RParen reft ) = RParen (f reft)
-  f (RConst s    ) = RConst s
+insertEntityVal :: Reft -> Renderer Reft
+insertEntityVal reft = do
+  accessors <- askAccessors
+  let f (ROps refts ops) = ROps (map f refts) ops
+      f (RApp [RConst s, r]) | s `elem` accessors =
+        RApp [RConst s, RParen (RApp [RConst "entityVal", f r])]
+      f (RApp   refts) = RApp (map f refts)
+      f (RParen reft ) = RParen (f reft)
+      f (RConst s    ) = RConst s
+  return (f reft)
 
 argsToUpper :: [String] -> Reft -> Reft
 argsToUpper args = f
@@ -386,33 +379,16 @@ interleave :: [a] -> [a] -> [a]
 interleave (x : xs) ys = x : interleave ys xs
 interleave []       ys = ys
 
-mapHead :: (a -> a) -> [a] -> [a]
-mapHead f (x : xs) = f x : xs
-mapHead _ []       = []
-
-imap :: (Int -> a -> b) -> [a] -> [b]
-imap f = zipWith f [0 ..]
-
-
-normalizeBody :: String -> String -> Reft -> Reft
-normalizeBody row viewer = f
- where
-  f (ROps refts ops) = ROps (map f refts) ops
-  f (RApp   refts  ) = RApp (map f refts)
-  f (RParen reft   ) = RParen (f reft)
-  f (RConst s) | s == row    = RConst "row"
-               | s == viewer = RConst "viewer"
-               | otherwise   = RConst s
-
-
 findUpdatePolicy :: [UpdatePolicy] -> String -> String -> Renderer Policy
 findUpdatePolicy updatePolicies fieldName capability = do
   case policyAttr of
     Just policyAttr -> do
-      (Policy args body) <- extractPolicy policyAttr
-      return $ Policy args (implies body (RApp [RConst capability, RConst (head args)]))
+      policy <- normalize <$> extractPolicy policyAttr
+      return $ unnormalize (addCapability policy)
     Nothing -> return $ Policy ["old", "_", "_"] (RApp [RConst capability, RConst "old"])
  where
   f (UpdatePolicy fields policyAttr) = if fieldName `elem` fields then Just policyAttr else Nothing
   policyAttr = safeHead . mapMaybe f $ updatePolicies
+  addCapability policy =
+    mapBody1 (\arg1 body -> implies body (RApp [RConst capability, RConst arg1])) policy
 
