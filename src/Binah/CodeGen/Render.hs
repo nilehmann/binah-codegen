@@ -7,12 +7,15 @@ module Binah.CodeGen.Render
   )
 where
 
+import qualified Control.Exception             as Ex
 import           Data.Char
 import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.List                      ( nub )
 import           Data.Function                  ( (&) )
+import           Data.FuzzySet                  ( FuzzySet(..) )
+import qualified Data.FuzzySet                 as F
 import           Text.QuasiText
 import           Text.Printf
 
@@ -27,9 +30,13 @@ import           Control.Monad.Reader           ( Reader(..)
 
 import           Binah.CodeGen.Helpers
 
+data UserError = Error String deriving Show
+
+instance Ex.Exception UserError
+
 type Renderer = Reader Env
 
-data Env = Env { envBinah :: Binah, envAccessors :: [String] }
+data Env = Env { envBinah :: Binah, envAccessors :: [String], envPolicyNames :: FuzzySet }
 
 askInline :: MonadReader Env m => m (Maybe String)
 askInline = asks $ (\(Binah _ inline) -> inline) . envBinah
@@ -40,8 +47,25 @@ askDecls f = asks (f . binahDecls . envBinah)
 askAccessors :: MonadReader Env m => m [String]
 askAccessors = asks envAccessors
 
+nameSuggestions :: MonadReader Env m => String -> m [Text]
+nameSuggestions name = do
+  set <- asks envPolicyNames
+  return $ map snd $ F.getWithMinScore 0.7 set (T.pack name)
+
 lookupPolicy :: MonadReader Env m => String -> m Policy
-lookupPolicy name = fromJust . lookup name <$> askDecls policyDecls
+lookupPolicy name = do
+  policies <- askDecls policyDecls
+  case lookup name policies of
+    Just policy -> return policy
+    Nothing     -> do
+      suggestions <- nameSuggestions name
+      let msg = [embed|Unknown policy $name. $(suggestMsg suggestions)|]
+      Ex.throw $ Error (T.unpack msg)
+ where
+  suggestMsg :: [Text] -> Text
+  suggestMsg []  = T.pack ""
+  suggestMsg [s] = [embed|Did you mean $s?|]
+  suggestMsg s   = [embed|Did you mean any of these [$(join s ", ")]?|]
 
 extractPolicy :: MonadReader Env m => PolicyAttr -> m Policy
 extractPolicy (InlinePolicy policy) = return policy
@@ -52,11 +76,12 @@ extractPolicy (PolicyRef    name  ) = lookupPolicy name
 -- lookupPolicy policies = fromJust . flip lookup policies
 
 render :: Binah -> Text
-render binah@(Binah decls inline) = runReader binahR (Env binah accessors)
+render binah@(Binah decls inline) = runReader binahR (Env binah accessors policyNames)
  where
   records = recordDecls decls
   accessors =
     concatMap (\(Rec name items) -> mapFields (accessorName name . fieldName) items) records
+  policyNames = F.fromList $ map (T.pack . fst) (policyDecls decls)
 
 binahR :: Renderer Text
 binahR = do

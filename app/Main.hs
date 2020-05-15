@@ -15,7 +15,7 @@ main = do
   srcFile <- getSrcFile
   s       <- T.readFile srcFile
   case parse srcFile s of
-    Left  e     -> putStrLn (errorBundlePretty e)
+    Left  e     -> hPutStrLn stderr (errorBundlePretty e)
     Right binah -> T.putStrLn . render $ binah
     --Right binah -> print binah
 

@@ -20,6 +20,7 @@ dependencies:
   - megaparsec
   - text
   - raw-strings-qq
+  - fuzzyset
 name: binah-codegen
 version: 0.1.0.0
 extra-source-files:

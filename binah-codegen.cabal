@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 05f49cb03c4f7841e5c7e62a681acb8464ea8b7d15ffec707e31d974fcd345f6
+-- hash: 9adf6d5ff72a6c77957b5b0db95cd65251609ecf236cc168aab55eff304edae5
 
 name:           binah-codegen
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
       QuasiText
     , base >=4.7 && <5
     , containers
+    , fuzzyset
     , megaparsec
     , mtl
     , raw-strings-qq
@@ -57,6 +58,7 @@ executable binah-codegen
     , base >=4.7 && <5
     , binah-codegen
     , containers
+    , fuzzyset
     , megaparsec
     , mtl
     , raw-strings-qq
@@ -76,6 +78,7 @@ test-suite binah-codegen-test
     , base >=4.7 && <5
     , binah-codegen
     , containers
+    , fuzzyset
     , megaparsec
     , mtl
     , raw-strings-qq
