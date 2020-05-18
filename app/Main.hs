@@ -7,6 +7,7 @@ import           System.Environment             ( getArgs )
 import           System.IO
 import           Text.Megaparsec                ( errorBundlePretty )
 
+import           Binah.CodeGen.Check
 import           Binah.CodeGen.Parser
 import           Binah.CodeGen.Render
 
@@ -16,8 +17,11 @@ main = do
   s       <- T.readFile srcFile
   case parse srcFile s of
     Left  e     -> hPutStrLn stderr (errorBundlePretty e)
-    Right binah -> T.putStrLn . render $ binah
-    --Right binah -> print binah
+    Right binah -> 
+      case checkBinah binah of
+        []     -> T.putStrLn . render $ binah
+        --[]     -> print binah
+        errors -> hPutStrLn stderr (show errors)
 
 getSrcFile :: IO String
 getSrcFile = do

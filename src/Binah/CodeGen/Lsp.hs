@@ -31,6 +31,7 @@ import           Language.Haskell.LSP.VFS
 import           System.Exit
 import qualified System.Log.Logger             as L
 
+import           Binah.CodeGen.Check
 import           Binah.CodeGen.Parser           ( parse )
 import           Binah.CodeGen.UX
 
@@ -95,26 +96,27 @@ checkFile :: J.VersionedTextDocumentIdentifier -> R () ()
 checkFile doc = do
     lf   <- ask
     mdoc <- liftIO $ Core.getVirtualFileFunc lf normalizedUri
-    let diags = maybe [] parseFile mdoc
+    let errors = maybe [] parseAndCheck mdoc
+    let diags  = map diagnosticFromError errors
     liftIO $ U.logs $ "sending diagnostics" ++ show (length diags)
     publishDiagnostics 100 normalizedUri version (partitionBySource diags)
   where
     normalizedUri = doc ^. J.uri . to J.toNormalizedUri
     version       = doc ^. J.version
 
-parseFile :: VirtualFile -> [J.Diagnostic]
-parseFile file = case parse "FILE" text of
-    Left  e -> map diagnosticFromError (mkParseErrors e)
-    Right _ -> []
+parseAndCheck :: VirtualFile -> [UserError]
+parseAndCheck file = case parse "FILE" text of
+    Left  e     -> mkParseErrors e
+    Right binah -> checkBinah binah
     where text = virtualFileText file
 
 diagnosticFromError :: UserError -> J.Diagnostic
-diagnosticFromError (ParseError s ss) = J.Diagnostic (sourceSpanToRange ss)
-                                                     (Just J.DsError)
-                                                     Nothing
-                                                     (Just "binah-lsp")
-                                                     (T.pack s)
-                                                     (Just (J.List []))
+diagnosticFromError (Error s ss) = J.Diagnostic (sourceSpanToRange ss)
+                                                (Just J.DsError)
+                                                Nothing
+                                                (Just "binah-lsp")
+                                                (T.pack s)
+                                                (Just (J.List []))
 
 sourceSpanToRange :: SourceSpan -> J.Range
 sourceSpanToRange (SS begin end) = J.Range (f begin) (f end)

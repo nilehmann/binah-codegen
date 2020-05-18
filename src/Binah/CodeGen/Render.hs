@@ -52,19 +52,7 @@ nameSuggestions name = do
   return $ map snd $ F.getWithMinScore 0.7 set (T.pack name)
 
 lookupPolicy :: MonadReader Env m => String -> m Policy
-lookupPolicy name = do
-  policies <- askDecls policyDecls
-  case lookup name policies of
-    Just policy -> return policy
-    Nothing     -> do
-      suggestions <- nameSuggestions name
-      let msg = [embed|Unknown policy $name. $(suggestMsg suggestions)|]
-      Ex.throw $ Error (T.unpack msg)
- where
-  suggestMsg :: [Text] -> Text
-  suggestMsg []  = T.pack ""
-  suggestMsg [s] = [embed|Did you mean $s?|]
-  suggestMsg s   = [embed|Did you mean any of these [$(join s ", ")]?|]
+lookupPolicy name = fromJust . lookup name <$> askDecls policyDecls
 
 extractPolicy :: MonadReader Env m => PolicyAttr -> m Policy
 extractPolicy (InlinePolicy policy) = return policy
@@ -385,21 +373,6 @@ argsToUpper args = f
 --------------------------------------------------------------------------------
 -- | Helpers
 --------------------------------------------------------------------------------
-
-join :: ToText a => [a] -> String -> Text
-join = mapJoin id
-
-mapJoin :: (ToText sep, ToText b) => (a -> b) -> [a] -> sep -> Text
-mapJoin f xs sep = T.intercalate (toText sep) . map (toText . f) $ xs
-
-class ToText a where
-  toText :: a -> Text
-
-instance ToText Text where
-  toText t = t
-
-instance ToText [Char] where
-  toText = T.pack
 
 getUpdatePolicy :: Rec -> String -> Renderer Policy
 getUpdatePolicy record fieldName = do

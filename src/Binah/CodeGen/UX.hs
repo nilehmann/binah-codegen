@@ -17,7 +17,7 @@ data SourceSpan = SS
   }
   deriving (Eq, Show)
 
-data UserError = ParseError String SourceSpan
+data UserError = Error String SourceSpan deriving Show
 
 --------------------------------------------------------------------------------
 -- | Errors
@@ -30,4 +30,4 @@ mkParseErrors ParseErrorBundle {..} = let (r, _) = foldl g ([], bundlePosState) 
         let pst' = reachOffsetNoLine (errorOffset e) pst
             pos  = pstateSourcePos pst'
             s    = parseErrorTextPretty e
-        in  (ParseError s (SS pos pos) : xs, pst')
+        in  (Error s (SS pos pos) : xs, pst')
