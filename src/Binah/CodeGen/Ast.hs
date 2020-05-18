@@ -4,15 +4,17 @@ import           Data.Data
 import           Data.List
 import           Data.Maybe
 import           Data.Typeable
+import           Text.Printf                    ( printf )
 
 import           Binah.CodeGen.Helpers
-import           Text.Printf                    ( printf )
+import           Binah.CodeGen.UX
 
 data Binah = Binah
   { binahDecls  :: [Decl]
   , binahInline :: Maybe String
   }
   deriving Show
+
 
 ----------------------------------------------------------------------------------------------------
 -- | Top level declarations
@@ -128,11 +130,11 @@ data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
 
 data ReadPolicy = ReadPolicy [String] PolicyAttr deriving Show
 
-data PolicyAttr = InlinePolicy Policy | PolicyRef String deriving Show
+data PolicyAttr = InlinePolicy Policy | PolicyRef String SourceSpan deriving Show
 
 policyRef :: PolicyAttr -> Maybe String
-policyRef (PolicyRef name) = Just name
-policyRef _                = Nothing
+policyRef (PolicyRef name _) = Just name
+policyRef _                  = Nothing
 
 inlinePolicy :: PolicyAttr -> Maybe Policy
 inlinePolicy (InlinePolicy policy) = Just policy

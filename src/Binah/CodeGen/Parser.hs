@@ -1,10 +1,8 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 module Binah.CodeGen.Parser
   ( parse
-  , mapErrorBundle
   )
 where
 
@@ -19,8 +17,8 @@ import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import qualified Data.List.NonEmpty            as NE
 
-
 import           Binah.CodeGen.Ast
+import           Binah.CodeGen.UX
 
 type Parser = Parsec Void Text
 
@@ -117,7 +115,12 @@ policyAttrP :: Parser () -> Parser PolicyAttr
 policyAttrP sc' = policyRefP <|> inlinePolicyP sc'
 
 policyRefP :: Parser PolicyAttr
-policyRefP = PolicyRef <$> (char '@' *> policyVar sc)
+policyRefP = do
+  p1 <- getSourcePos
+  char '@'
+  name <- policyVar sc
+  p2   <- getSourcePos
+  return $ PolicyRef name (SS p1 p2)
 
 inlinePolicyP :: Parser () -> Parser PolicyAttr
 inlinePolicyP sc' = InlinePolicy <$> between (L.symbol sc' "{") (L.symbol sc "}") (policyP sc')
@@ -207,21 +210,3 @@ sepBy1_ p sep = do
   x        <- p
   (ys, xs) <- unzip <$> many ((,) <$> sep <*> p)
   return (x : xs, ys)
-
-
---------------------------------------------------------------------------------
--- | Errors
---------------------------------------------------------------------------------
-
-mapErrorBundle
-  :: (Stream s, ShowErrorComponent e) => (Int -> Int -> String -> a) -> ParseErrorBundle s e -> [a]
-mapErrorBundle f ParseErrorBundle {..} =
-  let (r, _) = foldl g ([], bundlePosState) bundleErrors in r
- where
-  g (xs, pst) e =
-    let pst'                      = reachOffsetNoLine (errorOffset e) pst
-        (SourcePos _ line column) = pstateSourcePos pst'
-        s                         = parseErrorTextPretty e
-    in  (f (unPos line) (unPos column) s : xs, pst')
-
-

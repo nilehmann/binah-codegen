@@ -31,9 +31,8 @@ import           Language.Haskell.LSP.VFS
 import           System.Exit
 import qualified System.Log.Logger             as L
 
-import           Binah.CodeGen.Parser           ( parse
-                                                , mapErrorBundle
-                                                )
+import           Binah.CodeGen.Parser           ( parse )
+import           Binah.CodeGen.UX
 
 
 -- ---------------------------------------------------------------------
@@ -105,17 +104,21 @@ checkFile doc = do
 
 parseFile :: VirtualFile -> [J.Diagnostic]
 parseFile file = case parse "FILE" text of
-    Left  e -> mapErrorBundle f e
+    Left  e -> map diagnosticFromError (mkParseErrors e)
     Right _ -> []
-  where
-    text = virtualFileText file
-    f line column s = J.Diagnostic
-        (J.Range (J.Position (line - 1) (column - 1)) (J.Position (line - 1) (column - 1)))
-        (Just J.DsError)
-        Nothing
-        (Just "binah-lsp")
-        (T.pack s)
-        (Just (J.List []))
+    where text = virtualFileText file
+
+diagnosticFromError :: UserError -> J.Diagnostic
+diagnosticFromError (ParseError s ss) = J.Diagnostic (sourceSpanToRange ss)
+                                                     (Just J.DsError)
+                                                     Nothing
+                                                     (Just "binah-lsp")
+                                                     (T.pack s)
+                                                     (Just (J.List []))
+
+sourceSpanToRange :: SourceSpan -> J.Range
+sourceSpanToRange (SS begin end) = J.Range (f begin) (f end)
+    where f (SourcePos _ line column) = J.Position (unPos line - 1) (unPos column - 1)
 
 -- ---------------------------------------------------------------------
 

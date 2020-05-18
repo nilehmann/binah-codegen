@@ -27,7 +27,6 @@ import           Control.Monad.Reader           ( Reader(..)
                                                 , asks
                                                 )
 
-
 import           Binah.CodeGen.Helpers
 
 data UserError = Error String deriving Show
@@ -69,11 +68,8 @@ lookupPolicy name = do
 
 extractPolicy :: MonadReader Env m => PolicyAttr -> m Policy
 extractPolicy (InlinePolicy policy) = return policy
-extractPolicy (PolicyRef    name  ) = lookupPolicy name
+extractPolicy (PolicyRef name _   ) = lookupPolicy name
 
--- -- TODO: Handle not found
--- lookupPolicy :: [(String, Policy)] -> String -> Policy
--- lookupPolicy policies = fromJust . flip lookup policies
 
 render :: Binah -> Text
 render binah@(Binah decls inline) = runReader binahR (Env binah accessors policyNames)

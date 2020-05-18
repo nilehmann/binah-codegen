@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b1bfbfbdb4b14a3bbf2c02b36d26e41241cd66f646d433b4152b48c8a61cb518
+-- hash: b04e62acad23050193d1b2d97f0449e7a5cfe86b801c81ad176ff0557748fe88
 
 name:           binah-codegen
 version:        0.1.0.0
@@ -32,6 +32,7 @@ library
       Binah.CodeGen.Lsp
       Binah.CodeGen.Parser
       Binah.CodeGen.Render
+      Binah.CodeGen.UX
   other-modules:
       Paths_binah_codegen
   hs-source-dirs:
