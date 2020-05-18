@@ -3,6 +3,11 @@ module Binah.CodeGen.Check
     )
 where
 
+import           Control.Monad.Reader           ( Reader(..)
+                                                , MonadReader(..)
+                                                , runReader
+                                                , asks
+                                                )
 import           Data.FuzzySet                  ( FuzzySet(..) )
 import qualified Data.FuzzySet                 as F
 import           Data.Maybe                     ( isJust )
@@ -16,36 +21,48 @@ import           Binah.CodeGen.UX
 
 type PolicySet = FuzzySet
 
+type RecChecker = Reader RecEnv
+
+data RecEnv = RecEnv { recEnvPolicies :: FuzzySet, recEnvFields :: FuzzySet }
+
 checkBinah :: Binah -> [UserError]
 checkBinah (Binah decls _) = concatMap (checkRecord policies) (recordDecls decls)
     where policies = F.fromList $ map (T.pack . fst) (policyDecls decls)
 
 checkRecord :: PolicySet -> Rec -> [UserError]
-checkRecord policies (Rec _ items) = concatMap (checkItem policies) items
-
-checkItem :: PolicySet -> RecItem -> [UserError]
-checkItem policies (FieldItem (Field _ _ (Just (PolicyRef name ss)))) =
-    [ policyNotFoundError policies name ss | not (policies `contains` name) ]
-checkItem policies (ReadItem (ReadPolicy _ (PolicyRef name ss))) =
-    [ policyNotFoundError policies name ss | not (policies `contains` name) ]
-checkItem policies (UpdateItem (UpdatePolicy _ (PolicyRef name ss))) =
-    [ policyNotFoundError policies name ss | not (policies `contains` name) ]
-checkItem policies (InsertItem (PolicyRef name ss)) =
-    [ policyNotFoundError policies name ss | not (policies `contains` name) ]
-checkItem _ _ = []
-
-
-contains :: PolicySet -> String -> Bool
-contains policies = isJust . F.getOneWithMinScore 1.0 policies . T.pack
-
-policyNotFoundError :: PolicySet -> String -> SourceSpan -> UserError
-policyNotFoundError policies name = Error msg
+checkRecord policies (Rec _ items) = runReader (concatMapM checkItem items) env
   where
-    suggestion = case nameSuggestions policies name of
-        []  -> ""
-        [s] -> printf ". Did you mean %s?" s
-        s   -> printf ". Did you mean any of [%s]?" (join s ", ")
-    msg = printf "Unknown policy %s%s" name suggestion
+    fields = F.fromList $ map (T.pack . fieldName) (filterFields items)
+    env    = RecEnv policies fields
 
-nameSuggestions :: PolicySet -> String -> [Text]
-nameSuggestions policies name = map snd $ F.getWithMinScore 0.7 policies (T.pack name)
+checkItem :: RecItem -> RecChecker [UserError]
+checkItem (FieldItem (Field _ _ (Just (PolicyRef name ss)))) = checkPolicyRef name ss
+checkItem (ReadItem (ReadPolicy _ (PolicyRef name ss))) = checkPolicyRef name ss
+checkItem (UpdateItem (UpdatePolicy _ (PolicyRef name ss))) = checkPolicyRef name ss
+checkItem (InsertItem (PolicyRef name ss)) = checkPolicyRef name ss
+checkItem _ = return []
+
+checkPolicyRef :: String -> SourceSpan -> RecChecker [UserError]
+checkPolicyRef name ss = do
+    b <- containsPolicy name
+    if b then return [] else policyNotFound name ss
+
+containsPolicy :: String -> RecChecker Bool
+containsPolicy name = do
+    policies <- asks recEnvPolicies
+    return . isJust . F.getOneWithMinScore 1.0 policies . T.pack $ name
+
+policyNotFound :: String -> SourceSpan -> RecChecker [UserError]
+policyNotFound name ss = do
+    suggestions <- nameSuggestions name
+    let suggestion = case suggestions of
+            []  -> ""
+            [s] -> printf ". Did you mean %s?" s
+            s   -> printf ". Did you mean any of [%s]?" (join s ", ")
+    let msg = printf "Unknown policy %s%s" name suggestion
+    return [Error msg ss]
+
+nameSuggestions :: String -> RecChecker [Text]
+nameSuggestions name = do
+    policies <- asks recEnvPolicies
+    return . map snd $ F.getWithMinScore 0.7 policies (T.pack name)

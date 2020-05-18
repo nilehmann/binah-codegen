@@ -34,3 +34,6 @@ instance ToText Text where
 
 instance ToText [Char] where
     toText = T.pack
+
+concatMapM :: (Traversable t, Monad m) => (a -> m [b]) -> t a -> m [b]
+concatMapM f t = concat <$> mapM f t
