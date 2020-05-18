@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9adf6d5ff72a6c77957b5b0db95cd65251609ecf236cc168aab55eff304edae5
+-- hash: b1bfbfbdb4b14a3bbf2c02b36d26e41241cd66f646d433b4152b48c8a61cb518
 
 name:           binah-codegen
 version:        0.1.0.0
@@ -29,6 +29,7 @@ library
   exposed-modules:
       Binah.CodeGen.Ast
       Binah.CodeGen.Helpers
+      Binah.CodeGen.Lsp
       Binah.CodeGen.Parser
       Binah.CodeGen.Render
   other-modules:
@@ -39,16 +40,23 @@ library
       QuasiText
     , base >=4.7 && <5
     , containers
+    , data-default
     , fuzzyset
+    , haskell-lsp
+    , hslogger
+    , lens
     , megaparsec
     , mtl
     , raw-strings-qq
+    , stm
     , text
+    , unordered-containers
   default-language: Haskell2010
 
 executable binah-codegen
   main-is: Main.hs
   other-modules:
+      Server
       Paths_binah_codegen
   hs-source-dirs:
       app
@@ -58,11 +66,43 @@ executable binah-codegen
     , base >=4.7 && <5
     , binah-codegen
     , containers
+    , data-default
     , fuzzyset
+    , haskell-lsp
+    , hslogger
+    , lens
     , megaparsec
     , mtl
     , raw-strings-qq
+    , stm
     , text
+    , unordered-containers
+  default-language: Haskell2010
+
+executable binah-lsp
+  main-is: Server.hs
+  other-modules:
+      Main
+      Paths_binah_codegen
+  hs-source-dirs:
+      app
+  ghc-options: -main-is Server -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuasiText
+    , base >=4.7 && <5
+    , binah-codegen
+    , containers
+    , data-default
+    , fuzzyset
+    , haskell-lsp
+    , hslogger
+    , lens
+    , megaparsec
+    , mtl
+    , raw-strings-qq
+    , stm
+    , text
+    , unordered-containers
   default-language: Haskell2010
 
 test-suite binah-codegen-test
@@ -78,9 +118,15 @@ test-suite binah-codegen-test
     , base >=4.7 && <5
     , binah-codegen
     , containers
+    , data-default
     , fuzzyset
+    , haskell-lsp
+    , hslogger
+    , lens
     , megaparsec
     , mtl
     , raw-strings-qq
+    , stm
     , text
+    , unordered-containers
   default-language: Haskell2010
