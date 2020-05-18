@@ -13,6 +13,10 @@ tests:
 copyright: 2020 Nico Lehmann
 maintainer: nlehmann@eng.ucsd.edu
 dependencies:
+  - unordered-containers
+  - data-default
+  - lens
+  - hslogger
   - mtl
   - base >= 4.7 && < 5
   - containers
@@ -21,6 +25,8 @@ dependencies:
   - text
   - raw-strings-qq
   - fuzzyset
+  - haskell-lsp
+  - stm
 name: binah-codegen
 version: 0.1.0.0
 extra-source-files:
@@ -34,6 +40,16 @@ executables:
     source-dirs: app
     main: Main.hs
     ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - binah-codegen
+  binah-lsp:
+    source-dirs: app
+    main: Server.hs
+    ghc-options:
+      - -main-is Server
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
