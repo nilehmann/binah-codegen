@@ -138,7 +138,7 @@ policyP sc' = do
 -- | Refinements
 --------------------------------------------------------------------------------
 
--- We do a very basic parsing of refinements which is enough to insert entityVal 
+-- We do a very basic parsing of refinements which is enough to insert entityVal
 -- when needed.
 
 ascSymbols :: String
@@ -174,7 +174,7 @@ largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')
 smallid :: Parser String
 smallid = do
   notFollowedBy reserved
-  (:) <$> lowerChar <*> many (alphaNumChar <|> char '\'')
+  (:) <$> (lowerChar <|> char '_') <*> many (alphaNumChar <|> oneOf ['\'', '_'])
 
 tycon :: Parser () -> Parser String
 tycon sc = L.lexeme sc largeid <?> "type constructor"

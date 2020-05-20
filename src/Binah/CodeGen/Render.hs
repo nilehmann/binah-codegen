@@ -87,7 +87,7 @@ binahR = do
 
 {-@ LIQUID "--compile-spec" @-}
 
-module Model 
+module Model
   ( $(join exports "\n  , ")
   )
 
@@ -139,15 +139,15 @@ $(join policyDecls "\n\n")
 -- | Records
 --------------------------------------------------------------------------------
 
-{-@ data BinahRecord record < 
+{-@ data BinahRecord record <
     p :: Entity record -> Bool
   , insertpolicy :: Entity record -> Entity User -> Bool
-  , querypolicy  :: Entity record -> Entity User -> Bool 
+  , querypolicy  :: Entity record -> Entity User -> Bool
   >
   = BinahRecord _
 @-}
 data BinahRecord record = BinahRecord record
-{-@ data variance BinahRecord invariant invariant invariant invariant @-}
+{-@ data variance BinahRecord invariant covariant invariant invariant @-}
 
 {-@ persistentRecord :: BinahRecord record -> record @-}
 persistentRecord :: BinahRecord record -> record
@@ -231,9 +231,9 @@ mkRecR record@(Rec recName items) = do
   visibility   <- fmtPolicy $ unnormalize (policyDisjunction 2 readPolicies)
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
-{-@ mk$recName :: 
+{-@ mk$recName ::
      $(join argTys "\n  -> ")
-  -> BinahRecord < 
+  -> BinahRecord <
        {\row -> $(join pred " && ")}
      , {$insertPolicy}
      , {$visibility}
