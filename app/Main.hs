@@ -13,19 +13,26 @@ import           Binah.CodeGen.Render
 
 main :: IO ()
 main = do
-  srcFile <- getSrcFile
-  s       <- T.readFile srcFile
+  (srcFile, outFile) <- getFiles
+  s                  <- T.readFile srcFile
   case parse srcFile s of
     Left  e     -> hPutStrLn stderr (errorBundlePretty e)
     Right binah -> 
       case checkBinah binah of
-        []     -> T.putStrLn . render $ binah
+        []     -> do
+          h <- getOutHandle outFile
+          T.hPutStrLn h . render $ binah
+          hClose h
         --[]     -> print binah
         errors -> hPutStrLn stderr (show errors)
 
-getSrcFile :: IO String
-getSrcFile = do
+getFiles :: IO (String, String)
+getFiles = do
   args <- getArgs
   case args of
-    [f] -> return f
-    _   -> error "Please run with a single file as input"
+    [src]      -> return (src, "-")
+    [src, out] -> return (src, out)
+    _          -> error "Usage: binah-codegen src [out]"
+
+getOutHandle :: String -> IO Handle
+getOutHandle file = if file == "-" then return stdout else openFile file WriteMode
