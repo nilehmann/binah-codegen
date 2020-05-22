@@ -36,7 +36,7 @@ checkRecord policies (Rec _ items) = runReader (concatMapM checkItem items) env
     env    = RecEnv policies fields
 
 checkItem :: RecItem -> RecChecker [UserError]
-checkItem (FieldItem (Field _ _ (Just (PolicyRef name ss)))) = checkPolicyRef name ss
+checkItem (FieldItem (Field _ _ _ (Just (PolicyRef name ss)))) = checkPolicyRef name ss
 checkItem (ReadItem (ReadPolicy _ (PolicyRef name ss))) = checkPolicyRef name ss
 checkItem (UpdateItem (UpdatePolicy _ (PolicyRef name ss))) = checkPolicyRef name ss
 checkItem (InsertItem (PolicyRef name ss)) = checkPolicyRef name ss

@@ -76,7 +76,7 @@ recReadPolicies :: Rec -> String -> [PolicyAttr]
 recReadPolicies (Rec _ items) fieldName = fieldPolicy ++ mapMaybe f items
  where
   fields      = filterFields items
-  fieldPolicy = mapMaybe (\(Field n _ p) -> if n == fieldName then p else Nothing) fields
+  fieldPolicy = mapMaybe (\(Field n _ _ p) -> if n == fieldName then p else Nothing) fields
   f (ReadItem (ReadPolicy fields policy)) | fieldName `elem` fields = Just policy
   f _ = Nothing
 
@@ -123,14 +123,19 @@ filterAsserts = mapAsserts id
 data Field = Field
   { fieldName   :: String
   , fieldTyp    :: String
+  , fieldMaybe  :: Bool
   , fieldPolicy :: Maybe PolicyAttr
-  } deriving Show
+  }
+  deriving Show
 
 data UpdatePolicy = UpdatePolicy [String] PolicyAttr deriving Show
 
 data ReadPolicy = ReadPolicy [String] PolicyAttr deriving Show
 
-data PolicyAttr = InlinePolicy Policy | PolicyRef String SourceSpan deriving Show
+data PolicyAttr
+  = InlinePolicy Policy
+  | PolicyRef String SourceSpan
+  deriving Show
 
 policyRef :: PolicyAttr -> Maybe String
 policyRef (PolicyRef name _) = Just name
@@ -140,9 +145,9 @@ inlinePolicy :: PolicyAttr -> Maybe Policy
 inlinePolicy (InlinePolicy policy) = Just policy
 inlinePolicy _                     = Nothing
 
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- | Policies
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 data Policy = Policy
   { policyArgs :: [String]
@@ -153,9 +158,9 @@ data Policy = Policy
 policyTrue :: Int -> Policy
 policyTrue nargs = Policy (replicate nargs "_") (RConst "True")
 
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- | Refinements
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 data Reft
   = ROps [Reft] [String]
@@ -173,9 +178,9 @@ disjunction refts = ROps (map RParen refts) (replicate (length refts - 1) "||")
 implies :: Reft -> Reft -> Reft
 implies p1 p2 = ROps [RParen p1, RParen p2] ["=>"]
 
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- | Policies with an alpha normalized refinement
-----------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 data NormalizedPolicy = NormalizedPolicy Int Reft
 

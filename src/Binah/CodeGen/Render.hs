@@ -190,7 +190,8 @@ $name
   $(mapJoin fmtField fields "\n  ")
 |]
  where
-  fmtField (Field name typ _) = printf "%s %s" name typ :: String
+  fmtField (Field name typ True  _) = printf "%s %s Maybe" name typ
+  fmtField (Field name typ False _) = printf "%s %s" name typ :: String
   fields = filterFields items
 
 predicateDecl :: Pred -> Text
@@ -245,9 +246,11 @@ mk$recName $argNames = BinahRecord ($recName $argNames)
   fields       = filterFields items
   insertPolicy = lookupInsertPolicy items
   argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
-  argTys       = imap (\i (Field _ typ _) -> printf "x_%d: %s" i typ :: String) fields
-  pred         = imap
-    (\i (Field name _ _) ->
+  argTy i (Field _ typ True  _) = printf "x_%d: (Maybe %s)" i typ
+  argTy i (Field _ typ False _) = printf "x_%d: %s" i typ :: String
+  argTys = imap argTy fields
+  pred   = imap
+    (\i (Field name _ _ _) ->
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
     )
     fields
@@ -288,14 +291,14 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityFieldR :: Rec -> Field -> Renderer Text
-entityFieldR record@(Rec recName items) (Field fieldName typ _) = do
+entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
   updatePolicy <- getUpdatePolicy record fieldName >>= fmtPolicy
   readPolicies <- mapM extractPolicy $ recReadPolicies record fieldName
   readPolicy   <- case map normalize readPolicies of
     []           -> fmtPolicy $ policyTrue 2
     readPolicies -> fmtPolicy . unnormalize . policyDisjunction 2 $ readPolicies
   return [embed|
-{-@ measure $accessor :: $recName -> $typ @-}
+{-@ measure $accessor :: $recName -> $fldTyp @-}
 
 {-@ measure $capability :: Entity $recName -> Bool @-}
 
@@ -307,10 +310,11 @@ entityFieldR record@(Rec recName items) (Field fieldName typ _) = do
   , {$updatePolicy}
   > _ _
 @-}
-$entityFieldBinah :: EntityFieldWrapper $recName $typ
+$entityFieldBinah :: EntityFieldWrapper $recName $fldTyp
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 |]
  where
+  fldTyp                = if maybe then printf "(Maybe %s)" typ else typ
   accessor              = accessorName recName fieldName
   entityFieldBinah      = entityFieldBinahName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName

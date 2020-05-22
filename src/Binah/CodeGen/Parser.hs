@@ -77,8 +77,9 @@ fieldP :: Parser () -> Parser RecItem
 fieldP sc' = do
   name   <- var sc
   typ    <- tycon sc
+  maybe  <- try (L.symbol sc "Maybe" *> pure True) <|> pure False
   policy <- optional (policyAttrP sc')
-  return . FieldItem $ Field name typ policy
+  return . FieldItem $ Field name typ maybe policy
 
 updatePolicyP :: Parser () -> Parser RecItem
 updatePolicyP sc' = UpdateItem . uncurry UpdatePolicy <$> policyForFieldsP sc' "update"
