@@ -26,8 +26,9 @@ parse :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Binah
 parse = runParser (binahP <* eof)
 
 binahP :: Parser Binah
-binahP =
-  L.nonIndented scn (Binah <$> many (predDeclP <|> recDeclP <|> policyDeclP) <*> optional inlineP)
+binahP = L.nonIndented
+  scn
+  (Binah <$> many (predDeclP <|> recDeclP <|> policyDeclP <|> importDeclP) <*> optional inlineP)
 
 inlineP :: Parser String
 inlineP = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
@@ -107,6 +108,14 @@ fieldPatternP :: Parser () -> Parser [String]
 fieldPatternP sc' = between (symbol "[") (symbol "]") (var sc' `sepBy` symbol ",")
   where symbol = L.symbol sc'
 
+--------------------------------------------------------------------------------
+-- | Import Decl
+--------------------------------------------------------------------------------
+
+importDeclP :: Parser Decl
+importDeclP = do
+  L.symbol sc "import"
+  ImportDecl <$> many (satisfy (/= '\n')) <* scn
 
 --------------------------------------------------------------------------------
 -- | Policies

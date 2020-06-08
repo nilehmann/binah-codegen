@@ -72,6 +72,7 @@ binahR = do
   records      <- askDecls recordDecls
   preds        <- askDecls predDecls
   policies     <- askDecls policyDecls
+  imports      <- askDecls importDecls
   inline       <- askInline
   binahRecords <- mapM binahRecordR records
   policyDecls  <- mapM policyDeclR policies
@@ -104,6 +105,8 @@ import           Data.Text                      ( Text )
 import qualified Database.Persist              as Persist
 
 import           Binah.Core
+
+import $(join imports "\nimport ")
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 $(mapJoin persistentRecord records "\n\n")

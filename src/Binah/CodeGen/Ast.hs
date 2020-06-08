@@ -24,6 +24,7 @@ data Decl
   = RecDecl Rec
   | PredDecl Pred
   | PolicyDecl String Policy
+  | ImportDecl String
   deriving Show
 
 recordDecls :: [Decl] -> [Rec]
@@ -43,6 +44,12 @@ policyDecls = mapMaybe f
  where
   f (PolicyDecl name pred) = Just (name, pred)
   f _                      = Nothing
+
+importDecls :: [Decl] -> [String]
+importDecls = mapMaybe f
+ where
+  f (ImportDecl s) = Just s
+  f _              = Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- | Predicates
