@@ -72,7 +72,12 @@ recDeclP = L.indentBlock scn $ do
 
 recItemP :: Parser RecItem
 recItemP = L.lineFold scn $ \sc' ->
-  fieldP sc' <|> assertP sc' <|> readPolicyP sc' <|> insertPolicyP sc' <|> updatePolicyP sc'
+  fieldP sc'
+    <|> assertP sc'
+    <|> readPolicyP sc'
+    <|> insertPolicyP sc'
+    <|> updatePolicyP sc'
+    <|> uniqueP
 
 fieldP :: Parser () -> Parser RecItem
 fieldP sc' = do
@@ -101,7 +106,16 @@ policyForFieldsP sc' action = do
 assertP :: Parser () -> Parser RecItem
 assertP sc' = do
   L.symbol sc' "assert"
-  AssertItem . Assert <$> between (L.symbol sc' "[") (L.symbol sc "]") (reftP sc')
+  AssertItem . Assert <$> between (L.symbol sc' "{") (L.symbol sc "}") (reftP sc')
+
+uniqueP :: Parser RecItem
+uniqueP = do
+  name <- largeid
+  sc
+  fields <- many (var sc)
+  scn
+  return $ UniqueItem $ UniqueConstraint name fields
+
 
 -- TODO: Implement wildcard
 fieldPatternP :: Parser () -> Parser [String]

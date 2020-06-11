@@ -191,11 +191,14 @@ persistentRecord :: Rec -> Text
 persistentRecord (Rec name items) = [embed|
 $name
   $(mapJoin fmtField fields "\n  ")
+  $(mapJoin fmtUnique uniqueConstraints "\n ")
 |]
  where
   fmtField (Field name typ True  _) = printf "%s %s Maybe" name typ
   fmtField (Field name typ False _) = printf "%s %s" name typ :: String
   fields = filterFields items
+  fmtUnique (UniqueConstraint name fields) = printf "%s %s" name (unwords fields) :: String
+  uniqueConstraints = mapMaybe uniqueItem items
 
 predicateDecl :: Pred -> Text
 predicateDecl (Pred name argtys) = [embed|

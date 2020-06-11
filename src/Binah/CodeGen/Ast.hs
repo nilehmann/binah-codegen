@@ -77,7 +77,9 @@ data RecItem
   | ReadItem ReadPolicy
   | InsertItem PolicyAttr
   | UpdateItem UpdatePolicy
+  | UniqueItem UniqueConstraint
   deriving Show
+
 
 recReadPolicies :: Rec -> String -> [PolicyAttr]
 recReadPolicies (Rec _ items) fieldName = fieldPolicy ++ mapMaybe f items
@@ -126,6 +128,13 @@ mapAsserts f = mapMaybe (fmap f . assertItem)
 
 filterAsserts :: [RecItem] -> [Assert]
 filterAsserts = mapAsserts id
+
+uniqueItem :: RecItem -> Maybe UniqueConstraint
+uniqueItem (UniqueItem item) = Just item
+uniqueItem _                 = Nothing
+
+
+data UniqueConstraint = UniqueConstraint String [String] deriving Show
 
 data Field = Field
   { fieldName   :: String

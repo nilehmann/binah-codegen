@@ -1,0 +1,4 @@
+Record
+  field1 Text
+  field2 Text
+  UniqueRecordField field1 field2
