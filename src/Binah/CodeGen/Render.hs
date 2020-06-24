@@ -287,7 +287,7 @@ entityKey recName = [embed|
   , {\field row  -> field == entityKey row}
   , {\_ -> False}
   , {\_ _ _ -> True}
-  > _ _
+  > $recName $entityFieldPersistent
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $entityFieldPersistent
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
@@ -310,11 +310,11 @@ entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
 
 {-@ assume $entityFieldBinah :: EntityFieldWrapper <
     {$readPolicy}
-  , {\row field  -> field == $accessor (entityVal row)}
-  , {\field row  -> field == $accessor (entityVal row)}
+  , {\row field -> field == $accessor (entityVal row)}
+  , {\field row -> field == $accessor (entityVal row)}
   , {\old -> $capability old}
   , {$updatePolicy}
-  > _ _
+  > $recName $fldTyp
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $fldTyp
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
