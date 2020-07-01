@@ -106,25 +106,11 @@ import qualified Database.Persist              as Persist
 
 import           Binah.Core
 
-$(mapJoin ("import" ++ ) imports "\n")
+$(mapJoin ("import " ++) imports "\n")
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 $(mapJoin persistentRecord records "\n\n")
 $qqEnd
-
-{-@
-data EntityFieldWrapper record typ < querypolicy :: Entity record -> Entity User -> Bool
-                                   , selector :: Entity record -> typ -> Bool
-                                   , flippedselector :: typ -> Entity record -> Bool
-                                   , capability :: Entity record -> Bool
-                                   , updatepolicy :: Entity record -> Entity record -> Entity User -> Bool
-                                   > = EntityFieldWrapper _
-@-}
-
-data EntityFieldWrapper record typ = EntityFieldWrapper (Persist.EntityField record typ)
-{-@ data variance EntityFieldWrapper covariant covariant invariant invariant invariant invariant invariant @-}
-
-{-@ measure currentUser :: Entity User @-}
 
 --------------------------------------------------------------------------------
 -- | Predicates
@@ -141,20 +127,6 @@ $(join policyDecls "\n\n")
 --------------------------------------------------------------------------------
 -- | Records
 --------------------------------------------------------------------------------
-
-{-@ data BinahRecord record <
-    p :: Entity record -> Bool
-  , insertpolicy :: Entity record -> Entity User -> Bool
-  , querypolicy  :: Entity record -> Entity User -> Bool
-  >
-  = BinahRecord _
-@-}
-data BinahRecord record = BinahRecord record
-{-@ data variance BinahRecord invariant covariant invariant invariant @-}
-
-{-@ persistentRecord :: BinahRecord record -> record @-}
-persistentRecord :: BinahRecord record -> record
-persistentRecord (BinahRecord record) = record
 
 {-@ measure getJust :: Key record -> Entity record @-}
 
@@ -173,7 +145,7 @@ exportsR :: Renderer [String]
 exportsR = do
   records <- askDecls recordDecls
   return
-    (  ["EntityFieldWrapper(..)", "migrateAll", "BinahRecord", "persistentRecord"]
+    (  ["migrateAll"]
     ++ mkRec records
     ++ map recName records
     ++ entityFields records
@@ -239,22 +211,24 @@ mkRecR record@(Rec recName items) = do
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName ::
-     $(join argTys "\n  -> ")
+     $(join argTysWithNames "\n  -> ")
   -> BinahRecord <
        {\row -> $(join pred " && ")}
      , {$insertPolicy}
      , {$visibility}
-     > $recName
+     > (Entity User) $recName
 @-}
+mk$recName :: $(join argTys " -> ") -> BinahRecord (Entity User) $recName
 mk$recName $argNames = BinahRecord ($recName $argNames)
 |]
  where
   fields       = filterFields items
   insertPolicy = lookupInsertPolicy items
   argNames     = unwords $ map (printf "x_%d") [0 .. length fields - 1]
-  argTy i (Field _ typ True  _) = printf "x_%d: (Maybe %s)" i typ
-  argTy i (Field _ typ False _) = printf "x_%d: %s" i typ :: String
-  argTys = imap argTy fields
+  argTy (Field _ typ True  _) = printf "Maybe %s" typ
+  argTy (Field _ typ False _) = typ
+  argTysWithNames = imap (\i fld -> printf "x_%d: %s" i (argTy fld) :: String) fields
+  argTys = map argTy fields
   pred   = imap
     (\i (Field name _ _ _) ->
       printf "%s (entityVal row) == x_%d" (accessorName recName name) i :: String
@@ -287,9 +261,9 @@ entityKey recName = [embed|
   , {\field row  -> field == entityKey row}
   , {\_ -> False}
   , {\_ _ _ -> True}
-  > $recName $entityFieldPersistent
+  > (Entity User) $recName $entityFieldPersistent
 @-}
-$entityFieldBinah :: EntityFieldWrapper $recName $entityFieldPersistent
+$entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $entityFieldPersistent
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 |]
  where
@@ -314,9 +288,9 @@ entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
   , {\field row -> field == $accessor (entityVal row)}
   , {\old -> $capability old}
   , {$updatePolicy}
-  > $recName $fldTyp
+  > (Entity User) $recName $fldTyp
 @-}
-$entityFieldBinah :: EntityFieldWrapper $recName $fldTyp
+$entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $fldTyp
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
 |]
  where
