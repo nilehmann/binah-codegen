@@ -106,7 +106,7 @@ import qualified Database.Persist              as Persist
 
 import           Binah.Core
 
-import $(join imports "\nimport ")
+$(mapJoin ("import" ++ ) imports "\n")
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 $(mapJoin persistentRecord records "\n\n")
