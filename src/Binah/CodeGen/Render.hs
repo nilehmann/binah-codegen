@@ -85,14 +85,17 @@ binahR = do
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-@ LIQUID "--compile-spec" @-}
 
 module Model
   ( $(join exports "\n  , ")
   )
-
 where
+
 
 import           Database.Persist               ( Key )
 import           Database.Persist.TH            ( share
@@ -101,12 +104,21 @@ import           Database.Persist.TH            ( share
                                                 , sqlSettings
                                                 , persistLowerCase
                                                 )
-import           Data.Text                      ( Text )
 import qualified Database.Persist              as Persist
 
 import           Binah.Core
 
 $(mapJoin ("import " ++) imports "\n")
+
+--------------------------------------------------------------------------------
+-- | Inline
+--------------------------------------------------------------------------------
+
+$(fromMaybe "" inline)
+
+--------------------------------------------------------------------------------
+-- | Persistent
+--------------------------------------------------------------------------------
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 $(mapJoin persistentRecord records "\n\n")
@@ -131,12 +143,6 @@ $(join policyDecls "\n\n")
 {-@ measure getJust :: Key record -> Entity record @-}
 
 $(join binahRecords "\n\n")
-
---------------------------------------------------------------------------------
--- | Inline
---------------------------------------------------------------------------------
-
-$(fromMaybe "" inline)
 
 |]
   where qqEnd = "|]"
