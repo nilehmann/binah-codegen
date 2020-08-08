@@ -1,4 +1,5 @@
 Record
   field1 Text
   field2 Text
+  field3 Text Maybe
   UniqueRecordField field1 field2
