@@ -186,8 +186,11 @@ predicateDecl (Pred name argtys) = [embed|
 policyDeclR :: (String, Policy) -> Renderer Text
 policyDeclR (name, (Policy args body)) = do
   renderedBody <- renderReft . argsToUpper args <$> insertEntityVal body
-  return [embed|{-@ predicate $name $(upper (unwords args)) = $renderedBody @-}|]
-  where upper = map toUpper
+  return [embed|{-@ predicate $name $(unwords pArgs) = $renderedBody @-}|]
+  where
+    pArgs    = imap fArg args
+    fArg i a = if a == "_" then printf "A%d" i else map toUpper a
+
 
 binahRecordR :: Rec -> Renderer Text
 binahRecordR record@(Rec recName items) = do
