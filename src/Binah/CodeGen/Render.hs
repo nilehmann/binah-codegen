@@ -85,6 +85,8 @@ binahR = do
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-@ LIQUID "--compile-spec" @-}
 
@@ -142,13 +144,10 @@ $(join policyDecls "\n\n")
 -- | Records
 --------------------------------------------------------------------------------
 
-{-@ data BinahRecord record <
-    p :: Entity record -> Bool
-  , insertpolicy :: Entity record -> Entity User -> Bool
-  , querypolicy  :: Entity record -> Entity User -> Bool
-  >
-  = BinahRecord _
-@-}
+{-@ data BinahRecord record <p :: Entity record -> Bool, 
+                             insertpolicy :: Entity record -> Entity User -> Bool, 
+                             querypolicy  :: Entity record -> Entity User -> Bool> = BinahRecord _
+  @-}
 data BinahRecord record = BinahRecord record
 {-@ data variance BinahRecord invariant covariant invariant invariant @-}
 
@@ -239,13 +238,12 @@ mkRecR record@(Rec recName items) = do
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName ::
-     $(join argTys "\n  -> ")
-  -> BinahRecord <
-       {\row -> $(join pred " && ")}
-     , {$insertPolicy}
-     , {$visibility}
-     > $recName
-@-}
+          $(join argTys "\n       -> ")
+       -> BinahRecord <{\row -> $(join pred " && ")}, 
+                       {$insertPolicy}, 
+                       {$visibility}> 
+                       $recName
+  @-}
 mk$recName $argNames = BinahRecord ($recName $argNames)
 |]
  where
@@ -281,13 +279,13 @@ assert recName fields (Assert body) = [embed|
 
 entityKey :: String -> Text
 entityKey recName = [embed|
-{-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {\row viewer -> True}
-  , {\row field  -> field == entityKey row}
-  , {\field row  -> field == entityKey row}
-  , {\_ -> False}
-  , {\_ _ _ -> True}
-  > $recName $entityFieldPersistent
+{-@ assume $entityFieldBinah :: 
+      EntityFieldWrapper <{\row viewer -> True}, 
+                          {\row field  -> field == entityKey row}, 
+                          {\field row  -> field == entityKey row}, 
+                          {\_ -> False}, 
+                          {\_ _ _ -> True}> 
+                          $recName $entityFieldPersistent
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $entityFieldPersistent
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
@@ -308,13 +306,13 @@ entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
 
 {-@ measure $capability :: Entity $recName -> Bool @-}
 
-{-@ assume $entityFieldBinah :: EntityFieldWrapper <
-    {$readPolicy}
-  , {\row field -> field == $accessor (entityVal row)}
-  , {\field row -> field == $accessor (entityVal row)}
-  , {\old -> $capability old}
-  , {$updatePolicy}
-  > $recName $fldTyp
+{-@ assume $entityFieldBinah :: 
+      EntityFieldWrapper <{$readPolicy}, 
+                          {\row field -> field == $accessor (entityVal row)}, 
+                          {\field row -> field == $accessor (entityVal row)}, 
+                          {\old -> $capability old}, 
+                          {$updatePolicy}> 
+                          $recName $fldTyp
 @-}
 $entityFieldBinah :: EntityFieldWrapper $recName $fldTyp
 $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
