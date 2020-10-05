@@ -220,11 +220,11 @@ mkRecR record@(Rec recName items) = do
   insertPolicy <- fmtPolicyAttr insertPolicy
   return [embed|
 {-@ mk$recName ::
-        $(join argTysWithNames "\n       -> ")
-        -> BinahRecord <{\row -> $(join pred " && ")}, 
-                        {$insertPolicy}, 
-                        {$visibility}> 
-                        (Entity User) $recName
+        $(join argTysWithNames "\n     -> ")
+     -> BinahRecord <{\row -> $(join pred " && ")}, 
+                     {$insertPolicy}, 
+                     {$visibility}> 
+                     (Entity User) $recName
   @-}
 mk$recName :: $(join argTys " -> ") -> BinahRecord (Entity User) $recName
 mk$recName $argNames = BinahRecord ($recName $argNames)
