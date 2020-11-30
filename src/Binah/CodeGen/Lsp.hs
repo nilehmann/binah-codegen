@@ -117,6 +117,7 @@ diagnosticFromError (Error s ss) = J.Diagnostic (sourceSpanToRange ss)
                                                 (Just "binah-lsp")
                                                 (T.pack s)
                                                 (Just (J.List []))
+                                                Nothing
 
 sourceSpanToRange :: SourceSpan -> J.Range
 sourceSpanToRange (SS begin end) = J.Range (f begin) (f end)

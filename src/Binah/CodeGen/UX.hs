@@ -23,7 +23,10 @@ data UserError = Error String SourceSpan deriving Show
 -- | Errors
 --------------------------------------------------------------------------------
 
-mkParseErrors :: (Stream s, ShowErrorComponent e) => ParseErrorBundle s e -> [UserError]
+mkParseErrors
+  :: (VisualStream s, ShowErrorComponent e, TraversableStream s)
+  => ParseErrorBundle s e
+  -> [UserError]
 mkParseErrors ParseErrorBundle {..} = let (r, _) = foldl g ([], bundlePosState) bundleErrors in r
   where
     g (xs, pst) e =
