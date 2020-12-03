@@ -1,16 +1,15 @@
 module Binah.CodeGen.Ast where
 
-import           Data.Data
 import           Data.List
 import           Data.Maybe
-import           Data.Typeable
 import           Text.Printf                    ( printf )
 
 import           Binah.CodeGen.Helpers
 import           Binah.CodeGen.UX
 
 data Binah = Binah
-  { binahDecls  :: [Decl]
+  { binahModule :: Maybe String
+  , binahDecls  :: [Decl]
   , binahInline :: Maybe String
   }
   deriving Show

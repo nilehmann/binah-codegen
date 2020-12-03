@@ -13,14 +13,12 @@ import           Data.Maybe
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 import           Data.List                      ( nub )
-import           Data.Function                  ( (&) )
 import           Data.FuzzySet                  ( FuzzySet(..) )
 import qualified Data.FuzzySet                 as F
 import           Text.QuasiText
 import           Text.Printf
 
 import           Binah.CodeGen.Ast
-import           Control.Monad                  ( (<=<) )
 import           Control.Monad.Reader           ( Reader(..)
                                                 , MonadReader(..)
                                                 , runReader
@@ -29,7 +27,7 @@ import           Control.Monad.Reader           ( Reader(..)
 
 import           Binah.CodeGen.Helpers
 
-data UserError = Error String deriving Show
+newtype UserError = Error String deriving Show
 
 instance Ex.Exception UserError
 
@@ -37,8 +35,11 @@ type Renderer = Reader Env
 
 data Env = Env { envBinah :: Binah, envAccessors :: [String], envPolicyNames :: FuzzySet }
 
+askModule :: MonadReader Env m => m (Maybe String)
+askModule = asks $ (\(Binah mod _ _) -> mod) . envBinah
+
 askInline :: MonadReader Env m => m (Maybe String)
-askInline = asks $ (\(Binah _ inline) -> inline) . envBinah
+askInline = asks $ (\(Binah _ _ inline) -> inline) . envBinah
 
 askDecls :: MonadReader Env m => ([Decl] -> [a]) -> m [a]
 askDecls f = asks (f . binahDecls . envBinah)
@@ -60,7 +61,7 @@ extractPolicy (PolicyRef name _   ) = lookupPolicy name
 
 
 render :: Binah -> Text
-render binah@(Binah decls inline) = runReader binahR (Env binah accessors policyNames)
+render binah@(Binah _ decls _) = runReader binahR (Env binah accessors policyNames)
  where
   records = recordDecls decls
   accessors =
@@ -69,6 +70,7 @@ render binah@(Binah decls inline) = runReader binahR (Env binah accessors policy
 
 binahR :: Renderer Text
 binahR = do
+  mod          <- fromMaybe "Model" <$> askModule
   records      <- askDecls recordDecls
   preds        <- askDecls predDecls
   policies     <- askDecls policyDecls
@@ -91,7 +93,7 @@ binahR = do
 
 {-@ LIQUID "--compile-spec" @-}
 
-module Model
+module $(mod)
   ( $(join exports "\n  , ")
   )
 where
@@ -184,7 +186,7 @@ predicateDecl (Pred name argtys) = [embed|
 |]
 
 policyDeclR :: (String, Policy) -> Renderer Text
-policyDeclR (name, (Policy args body)) = do
+policyDeclR (name, Policy args body) = do
   renderedBody <- renderReft . argsToUpper args <$> insertEntityVal body
   return [embed|{-@ predicate $name $(unwords pArgs) = $renderedBody @-}|]
   where
@@ -221,9 +223,9 @@ mkRecR record@(Rec recName items) = do
   return [embed|
 {-@ mk$recName ::
         $(join argTysWithNames "\n     -> ")
-     -> BinahRecord <{\row -> $(join pred " && ")}, 
-                     {$insertPolicy}, 
-                     {$visibility}> 
+     -> BinahRecord <{\row -> $(join pred " && ")},
+                     {$insertPolicy},
+                     {$visibility}>
                      (Entity User) $recName
   @-}
 mk$recName :: $(join argTys " -> ") -> BinahRecord (Entity User) $recName
@@ -263,12 +265,12 @@ assert recName fields (Assert body) = [embed|
 
 entityKey :: String -> Text
 entityKey recName = [embed|
-{-@ assume $entityFieldBinah :: 
-      EntityFieldWrapper <{\row viewer -> True}, 
-                          {\row field  -> field == entityKey row}, 
-                          {\field row  -> field == entityKey row}, 
-                          {\_ -> False}, 
-                          {\_ _ _ -> True}> 
+{-@ assume $entityFieldBinah ::
+      EntityFieldWrapper <{\row viewer -> True},
+                          {\row field  -> field == entityKey row},
+                          {\field row  -> field == entityKey row},
+                          {\_ -> False},
+                          {\_ _ _ -> True}>
                           (Entity User) $recName $entityFieldPersistent
   @-}
 $entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $entityFieldPersistent
@@ -279,7 +281,7 @@ $entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityFieldR :: Rec -> Field -> Renderer Text
-entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
+entityFieldR record@(Rec recName _) (Field fieldName typ maybe _) = do
   updatePolicy <- getUpdatePolicy record fieldName >>= fmtPolicy
   readPolicies <- mapM extractPolicy $ recReadPolicies record fieldName
   readPolicy   <- case map normalize readPolicies of
@@ -290,12 +292,12 @@ entityFieldR record@(Rec recName items) (Field fieldName typ maybe _) = do
 
 {-@ measure $capability :: Entity $recName -> Bool @-}
 
-{-@ assume $entityFieldBinah :: 
-      EntityFieldWrapper <{$readPolicy}, 
-                          {\row field -> field == $accessor (entityVal row)}, 
-                          {\field row -> field == $accessor (entityVal row)}, 
-                          {\old -> $capability old}, 
-                          {$updatePolicy}> 
+{-@ assume $entityFieldBinah ::
+      EntityFieldWrapper <{$readPolicy},
+                          {\row field -> field == $accessor (entityVal row)},
+                          {\field row -> field == $accessor (entityVal row)},
+                          {\old -> $capability old},
+                          {$updatePolicy}>
                           (Entity User) $recName $fldTyp
   @-}
 $entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $fldTyp

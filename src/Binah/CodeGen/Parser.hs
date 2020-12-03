@@ -8,14 +8,11 @@ where
 
 import           Control.Monad                  ( void )
 import           Data.Char
-import           Data.Either
 import           Data.Void
 import           Text.Megaparsec         hiding ( parse )
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as L
 import           Data.Text                      ( Text )
-import qualified Data.Text                     as T
-import qualified Data.List.NonEmpty            as NE
 
 import           Binah.CodeGen.Ast
 import           Binah.CodeGen.UX
@@ -28,7 +25,13 @@ parse = runParser (binahP <* eof)
 binahP :: Parser Binah
 binahP = L.nonIndented
   scn
-  (Binah <$> many (predDeclP <|> recDeclP <|> policyDeclP <|> importDeclP) <*> optional inlineP)
+  (Binah <$> optional moduleDeclP <*> declsP <*> optional inlineP)
+
+moduleDeclP :: Parser String
+moduleDeclP = L.symbol sc "module" *> moduleName <* L.symbol scn "where"
+
+declsP :: Parser [Decl]
+declsP = many (predDeclP <|> recDeclP <|> policyDeclP <|> importDeclP)
 
 inlineP :: Parser String
 inlineP = L.symbol scn "#inline" *> many (notFollowedBy eof *> satisfy (const True))
@@ -190,7 +193,7 @@ reftParen sc = RParen <$> between (symbol "(") (symbol ")") (reftP sc) where sym
 
 -- TODO: We should probably put other reserved words here as well
 reserved :: Parser Text
-reserved = "assert" <|> "deriving" <|> "insert" <|> "update" <|> "read"
+reserved = "assert" <|> "deriving" <|> "insert" <|> "update" <|> "read" <|> "module"
 
 largeid :: Parser String
 largeid = (:) <$> upperChar <*> many (alphaNumChar <|> char '\'')
@@ -208,6 +211,11 @@ var sc = L.lexeme sc smallid <?> "variable"
 
 policyVar :: Parser () -> Parser String
 policyVar sc = L.lexeme sc largeid <?> "policy name"
+
+moduleName :: Parser String
+moduleName = L.lexeme sc $ do
+  notFollowedBy reserved
+  (:) <$> upperChar <*> many (alphaNumChar <|> char '.')
 
 --------------------------------------------------------------------------------
 -- | Spaces

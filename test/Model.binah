@@ -1,3 +1,5 @@
+module Module.Test where
+
 Record
   field1 Text
   field2 Text

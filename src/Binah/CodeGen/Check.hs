@@ -4,7 +4,6 @@ module Binah.CodeGen.Check
 where
 
 import           Control.Monad.Reader           ( Reader(..)
-                                                , MonadReader(..)
                                                 , runReader
                                                 , asks
                                                 )
@@ -26,7 +25,7 @@ type RecChecker = Reader RecEnv
 data RecEnv = RecEnv { recEnvPolicies :: FuzzySet, recEnvFields :: FuzzySet }
 
 checkBinah :: Binah -> [UserError]
-checkBinah (Binah decls _) = concatMap (checkRecord policies) (recordDecls decls)
+checkBinah (Binah _ decls _) = concatMap (checkRecord policies) (recordDecls decls)
     where policies = F.fromList $ map (T.pack . fst) (policyDecls decls)
 
 checkRecord :: PolicySet -> Rec -> [UserError]
