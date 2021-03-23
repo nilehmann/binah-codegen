@@ -2,7 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Binah.CodeGen.Render
+module Storm.CodeGen.Render
   ( render
   )
 where
@@ -18,14 +18,14 @@ import qualified Data.FuzzySet                 as F
 import           Text.QuasiText
 import           Text.Printf
 
-import           Binah.CodeGen.Ast
+import           Storm.CodeGen.Ast
 import           Control.Monad.Reader           ( Reader(..)
                                                 , MonadReader(..)
                                                 , runReader
                                                 , asks
                                                 )
 
-import           Binah.CodeGen.Helpers
+import           Storm.CodeGen.Helpers
 
 newtype UserError = Error String deriving Show
 
@@ -33,16 +33,16 @@ instance Ex.Exception UserError
 
 type Renderer = Reader Env
 
-data Env = Env { envBinah :: Binah, envAccessors :: [String], envPolicyNames :: FuzzySet }
+data Env = Env { envStorm :: Storm, envAccessors :: [String], envPolicyNames :: FuzzySet }
 
 askModule :: MonadReader Env m => m (Maybe String)
-askModule = asks $ (\(Binah mod _ _) -> mod) . envBinah
+askModule = asks $ (\(Storm mod _ _) -> mod) . envStorm
 
 askInline :: MonadReader Env m => m (Maybe String)
-askInline = asks $ (\(Binah _ _ inline) -> inline) . envBinah
+askInline = asks $ (\(Storm _ _ inline) -> inline) . envStorm
 
 askDecls :: MonadReader Env m => ([Decl] -> [a]) -> m [a]
-askDecls f = asks (f . binahDecls . envBinah)
+askDecls f = asks (f . stormDecls . envStorm)
 
 askAccessors :: MonadReader Env m => m [String]
 askAccessors = asks envAccessors
@@ -60,23 +60,23 @@ extractPolicy (InlinePolicy policy) = return policy
 extractPolicy (PolicyRef name _   ) = lookupPolicy name
 
 
-render :: Binah -> Text
-render binah@(Binah _ decls _) = runReader binahR (Env binah accessors policyNames)
+render :: Storm -> Text
+render storm@(Storm _ decls _) = runReader stormR (Env storm accessors policyNames)
  where
   records = recordDecls decls
   accessors =
     concatMap (\(Rec name items) -> mapFields (accessorName name . fieldName) items) records
   policyNames = F.fromList $ map (T.pack . fst) (policyDecls decls)
 
-binahR :: Renderer Text
-binahR = do
+stormR :: Renderer Text
+stormR = do
   mod          <- fromMaybe "Model" <$> askModule
   records      <- askDecls recordDecls
   preds        <- askDecls predDecls
   policies     <- askDecls policyDecls
   imports      <- askDecls importDecls
   inline       <- askInline
-  binahRecords <- mapM binahRecordR records
+  stormRecords <- mapM stormRecordR records
   policyDecls  <- mapM policyDeclR policies
   exports      <- exportsR
   return [embed|
@@ -108,7 +108,7 @@ import           Database.Persist.TH            ( share
                                                 )
 import qualified Database.Persist              as Persist
 
-import           Binah.Core
+import           Storm.Core
 
 $(mapJoin ("import " ++) imports "\n")
 
@@ -144,7 +144,7 @@ $(join policyDecls "\n\n")
 
 {-@ measure getJust :: Key record -> Entity record @-}
 
-$(join binahRecords "\n\n")
+$(join stormRecords "\n\n")
 
 |]
   where qqEnd = "|]"
@@ -164,7 +164,7 @@ exportsR = do
   mkRec        = map (("mk" ++) . recName)
   entityFields = concatMap
     (\(Rec name items) ->
-      entityFieldBinahName name "id" : mapFields (entityFieldBinahName name . fieldName) items
+      entityFieldStormName name "id" : mapFields (entityFieldStormName name . fieldName) items
     )
 
 persistentRecord :: Rec -> Text
@@ -194,8 +194,8 @@ policyDeclR (name, Policy args body) = do
     fArg i a = if a == "_" then printf "A%d" i else map toUpper a
 
 
-binahRecordR :: Rec -> Renderer Text
-binahRecordR record@(Rec recName items) = do
+stormRecordR :: Rec -> Renderer Text
+stormRecordR record@(Rec recName items) = do
   mkRec        <- mkRecR record
   entityFields <- mapM (entityFieldR record) fields
   return [embed|
@@ -223,13 +223,13 @@ mkRecR record@(Rec recName items) = do
   return [embed|
 {-@ mk$recName ::
         $(join argTysWithNames "\n     -> ")
-     -> BinahRecord <{\row -> $(join pred " && ")},
+     -> StormRecord <{\row -> $(join pred " && ")},
                      {$insertPolicy},
                      {$visibility}>
                      (Entity User) $recName
   @-}
-mk$recName :: $(join argTys " -> ") -> BinahRecord (Entity User) $recName
-mk$recName $argNames = BinahRecord ($recName $argNames)
+mk$recName :: $(join argTys " -> ") -> StormRecord (Entity User) $recName
+mk$recName $argNames = StormRecord ($recName $argNames)
 |]
  where
   fields       = filterFields items
@@ -265,7 +265,7 @@ assert recName fields (Assert body) = [embed|
 
 entityKey :: String -> Text
 entityKey recName = [embed|
-{-@ assume $entityFieldBinah ::
+{-@ assume $entityFieldStorm ::
       EntityFieldWrapper <{\row viewer -> True},
                           {\row field  -> field == entityKey row},
                           {\field row  -> field == entityKey row},
@@ -273,11 +273,11 @@ entityKey recName = [embed|
                           {\_ _ _ -> True}>
                           (Entity User) $recName $entityFieldPersistent
   @-}
-$entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $entityFieldPersistent
-$entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
+$entityFieldStorm :: EntityFieldWrapper (Entity User) $recName $entityFieldPersistent
+$entityFieldStorm = EntityFieldWrapper $entityFieldPersistent
 |]
  where
-  entityFieldBinah      = entityFieldBinahName recName "id"
+  entityFieldStorm      = entityFieldStormName recName "id"
   entityFieldPersistent = entityFieldPersistentName recName "id"
 
 entityFieldR :: Rec -> Field -> Renderer Text
@@ -292,7 +292,7 @@ entityFieldR record@(Rec recName _) (Field fieldName typ maybe _) = do
 
 {-@ measure $capability :: Entity $recName -> Bool @-}
 
-{-@ assume $entityFieldBinah ::
+{-@ assume $entityFieldStorm ::
       EntityFieldWrapper <{$readPolicy},
                           {\row field -> field == $accessor (entityVal row)},
                           {\field row -> field == $accessor (entityVal row)},
@@ -300,13 +300,13 @@ entityFieldR record@(Rec recName _) (Field fieldName typ maybe _) = do
                           {$updatePolicy}>
                           (Entity User) $recName $fldTyp
   @-}
-$entityFieldBinah :: EntityFieldWrapper (Entity User) $recName $fldTyp
-$entityFieldBinah = EntityFieldWrapper $entityFieldPersistent
+$entityFieldStorm :: EntityFieldWrapper (Entity User) $recName $fldTyp
+$entityFieldStorm = EntityFieldWrapper $entityFieldPersistent
 |]
  where
   fldTyp                = if maybe then printf "(Maybe %s)" typ else typ
   accessor              = accessorName recName fieldName
-  entityFieldBinah      = entityFieldBinahName recName fieldName
+  entityFieldStorm      = entityFieldStormName recName fieldName
   entityFieldPersistent = entityFieldPersistentName recName fieldName
   capability            = capabilityName recName fieldName
 
@@ -325,8 +325,8 @@ fmtPolicyAttr policyAttr = do
 accessorName :: String -> String -> String
 accessorName recName fieldName = mapHead toLower recName ++ mapHead toUpper fieldName
 
-entityFieldBinahName :: String -> String -> String
-entityFieldBinahName recName fieldName = accessorName recName fieldName ++ "'"
+entityFieldStormName :: String -> String -> String
+entityFieldStormName recName fieldName = accessorName recName fieldName ++ "'"
 
 entityFieldPersistentName :: String -> String -> String
 entityFieldPersistentName recName fieldName = recName ++ mapHead toUpper fieldName

@@ -1,5 +1,5 @@
-module Binah.CodeGen.Check
-    ( checkBinah
+module Storm.CodeGen.Check
+    ( checkStorm
     )
 where
 
@@ -14,9 +14,9 @@ import           Text.Printf                    ( printf )
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
 
-import           Binah.CodeGen.Ast
-import           Binah.CodeGen.Helpers
-import           Binah.CodeGen.UX
+import           Storm.CodeGen.Ast
+import           Storm.CodeGen.Helpers
+import           Storm.CodeGen.UX
 
 type PolicySet = FuzzySet
 
@@ -24,8 +24,8 @@ type RecChecker = Reader RecEnv
 
 data RecEnv = RecEnv { recEnvPolicies :: FuzzySet, recEnvFields :: FuzzySet }
 
-checkBinah :: Binah -> [UserError]
-checkBinah (Binah _ decls _) = concatMap (checkRecord policies) (recordDecls decls)
+checkStorm :: Storm -> [UserError]
+checkStorm (Storm _ decls _) = concatMap (checkRecord policies) (recordDecls decls)
     where policies = F.fromList $ map (T.pack . fst) (policyDecls decls)
 
 checkRecord :: PolicySet -> Rec -> [UserError]

@@ -1,7 +1,7 @@
 library:
   source-dirs: src
 tests:
-  binah-codegen-test:
+  storm-codegen-test:
     source-dirs: test
     main: Spec.hs
     ghc-options:
@@ -9,7 +9,7 @@ tests:
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      - binah-codegen
+      - storm-codegen
 copyright: 2020 Nico Lehmann
 maintainer: nlehmann@eng.ucsd.edu
 dependencies:
@@ -27,16 +27,16 @@ dependencies:
   - fuzzyset
   - haskell-lsp
   - stm
-name: binah-codegen
+name: storm-codegen
 version: 0.1.0.0
 extra-source-files:
   - README.md
   - ChangeLog.md
 author: Nico Lehmann
-github: nilehmann/binah-codegen
+github: nilehmann/storm-codegen
 license: BSD3
 executables:
-  binah-codegen:
+  storm-codegen:
     source-dirs: app
     main: Main.hs
     ghc-options:
@@ -44,8 +44,8 @@ executables:
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      - binah-codegen
-  binah-lsp:
+      - storm-codegen
+  storm-lsp:
     source-dirs: app
     main: Server.hs
     ghc-options:
@@ -54,5 +54,5 @@ executables:
       - -rtsopts
       - -with-rtsopts=-N
     dependencies:
-      - binah-codegen
-description: Please see the README on GitHub at <https://github.com/nilehmann/binah-codegen#readme>
+      - storm-codegen
+description: Please see the README on GitHub at <https://github.com/nilehmann/storm-codegen#readme>

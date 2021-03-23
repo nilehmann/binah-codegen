@@ -7,9 +7,9 @@ import           System.Environment             ( getArgs )
 import           System.IO
 import           Text.Megaparsec                ( errorBundlePretty )
 
-import           Binah.CodeGen.Check
-import           Binah.CodeGen.Parser
-import           Binah.CodeGen.Render
+import           Storm.CodeGen.Check
+import           Storm.CodeGen.Parser
+import           Storm.CodeGen.Render
 
 main :: IO ()
 main = do
@@ -17,13 +17,13 @@ main = do
   s                  <- T.readFile srcFile
   case parse srcFile s of
     Left  e     -> hPutStrLn stderr (errorBundlePretty e)
-    Right binah -> 
-      case checkBinah binah of
+    Right storm -> 
+      case checkStorm storm of
         []     -> do
           h <- getOutHandle outFile
-          T.hPutStrLn h . render $ binah
+          T.hPutStrLn h . render $ storm
           hClose h
-        --[]     -> print binah
+        --[]     -> print storm
         errors -> hPutStrLn stderr (show errors)
 
 getFiles :: IO (String, String)
@@ -32,7 +32,7 @@ getFiles = do
   case args of
     [src]      -> return (src, "-")
     [src, out] -> return (src, out)
-    _          -> error "Usage: binah-codegen src [out]"
+    _          -> error "Usage: storm-codegen src [out]"
 
 getOutHandle :: String -> IO Handle
 getOutHandle file = if file == "-" then return stdout else openFile file WriteMode

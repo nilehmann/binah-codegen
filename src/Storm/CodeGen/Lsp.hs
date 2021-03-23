@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Binah.CodeGen.Lsp
+module Storm.CodeGen.Lsp
     ( run
     )
 where
@@ -31,9 +31,9 @@ import           Language.Haskell.LSP.VFS
 import           System.Exit
 import qualified System.Log.Logger             as L
 
-import           Binah.CodeGen.Check
-import           Binah.CodeGen.Parser           ( parse )
-import           Binah.CodeGen.UX
+import           Storm.CodeGen.Check
+import           Storm.CodeGen.Parser           ( parse )
+import           Storm.CodeGen.UX
 
 
 -- ---------------------------------------------------------------------
@@ -107,14 +107,14 @@ checkFile doc = do
 parseAndCheck :: VirtualFile -> [UserError]
 parseAndCheck file = case parse "FILE" text of
     Left  e     -> mkParseErrors e
-    Right binah -> checkBinah binah
+    Right storm -> checkStorm storm
     where text = virtualFileText file
 
 diagnosticFromError :: UserError -> J.Diagnostic
 diagnosticFromError (Error s ss) = J.Diagnostic (sourceSpanToRange ss)
                                                 (Just J.DsError)
                                                 Nothing
-                                                (Just "binah-lsp")
+                                                (Just "storm-lsp")
                                                 (T.pack s)
                                                 (Just (J.List []))
                                                 Nothing

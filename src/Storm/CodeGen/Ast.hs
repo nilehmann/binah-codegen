@@ -1,16 +1,16 @@
-module Binah.CodeGen.Ast where
+module Storm.CodeGen.Ast where
 
 import           Data.List
 import           Data.Maybe
 import           Text.Printf                    ( printf )
 
-import           Binah.CodeGen.Helpers
-import           Binah.CodeGen.UX
+import           Storm.CodeGen.Helpers
+import           Storm.CodeGen.UX
 
-data Binah = Binah
-  { binahModule :: Maybe String
-  , binahDecls  :: [Decl]
-  , binahInline :: Maybe String
+data Storm = Storm
+  { stormModule :: Maybe String
+  , stormDecls  :: [Decl]
+  , stormInline :: Maybe String
   }
   deriving Show
 

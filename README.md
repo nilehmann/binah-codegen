@@ -1,9 +1,9 @@
-# Binah Cli
+# Storm Cli
 
-Command line utils for Binah.
+Command line utils for Storm.
 
-* binah-codegen: Codegenerator to build a haskell file from a `.binah` model file.
-* binah-lsp: Simple language server for `.binah` files. It is ment to be used with the [vscode extension](https://github.com/binah-framework/binah-vscode).
+* storm-codegen: Codegenerator to build a haskell file from a `.storm` model file.
+* storm-lsp: Simple language server for `.storm` files. It is ment to be used with the [vscode extension](https://github.com/storm-framework/storm-vscode).
 
 ## Build
 
@@ -17,4 +17,4 @@ stack build
 stack install
 ```
 
-This will install both `binah-codegen` and `binah-lsp`.
+This will install both `storm-codegen` and `storm-lsp`.

@@ -4,7 +4,7 @@ module Server where
 
 import           System.Exit
 
-import           Binah.CodeGen.Lsp 
+import           Storm.CodeGen.Lsp 
 
 main :: IO ()
 main = do
