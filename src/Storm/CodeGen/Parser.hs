@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 
-module Binah.CodeGen.Parser
+module Storm.CodeGen.Parser
   ( parse
   )
 where
@@ -14,18 +14,18 @@ import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer    as L
 import           Data.Text                      ( Text )
 
-import           Binah.CodeGen.Ast
-import           Binah.CodeGen.UX
+import           Storm.CodeGen.Ast
+import           Storm.CodeGen.UX
 
 type Parser = Parsec Void Text
 
-parse :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Binah
-parse = runParser (binahP <* eof)
+parse :: FilePath -> Text -> Either (ParseErrorBundle Text Void) Storm
+parse = runParser (stormP <* eof)
 
-binahP :: Parser Binah
-binahP = L.nonIndented
+stormP :: Parser Storm
+stormP = L.nonIndented
   scn
-  (Binah <$> optional moduleDeclP <*> declsP <*> optional inlineP)
+  (Storm <$> optional moduleDeclP <*> declsP <*> optional inlineP)
 
 moduleDeclP :: Parser String
 moduleDeclP = L.symbol sc "module" *> moduleName <* L.symbol scn "where"

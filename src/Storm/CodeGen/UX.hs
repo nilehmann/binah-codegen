@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Binah.CodeGen.UX
+module Storm.CodeGen.UX
     ( SourceSpan(..)
     , SourcePos(..)
     , UserError(..)

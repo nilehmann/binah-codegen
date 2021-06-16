@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Binah.CodeGen.Helpers where
+module Storm.CodeGen.Helpers where
 
 import           Data.Text                      ( Text )
 import qualified Data.Text                     as T
